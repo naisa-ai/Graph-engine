@@ -1,0 +1,46 @@
+# Graph-engine configuration
+
+# Server settings
+server:
+  grpc_port: 50051
+  http_port: 8080  # For health checks / metrics (optional)
+
+# Logging
+log:
+  level: info  # debug, info, warn, error
+  format: json # json or text
+
+# TLS configuration (optional)
+tls:
+  enabled: false
+  cert_file: ""
+  key_file: ""
+
+# Auth configuration (placeholder)
+auth:
+  enabled: false
+  # token_secret: ""  # For JWT validation (future)
+
+# Resource limits
+limits:
+  max_graphs: 10
+  max_builds_pending: 5
+  max_parallel_jobs: 4
+
+# igraph shim layer configuration
+igraph:
+  # Maximum concurrent igraph algorithm calls per graph version.
+  # igraph thread-safety depends on build configuration.
+  # Start with 1; increase after validation.
+  max_parallel_calls_per_version: 1
+
+  # Maximum memory (bytes) for igraph shim allocations.
+  # 0 = unlimited. Example: 1073741824 = 1GB
+  memory_limit_bytes: 0
+
+  # Enable the igraph C shim for algorithms.
+  # If false, uses pure Go implementations.
+  enable_shim: true
+
+  # Fall back to pure Go implementations on shim errors.
+  fallback_on_error: true

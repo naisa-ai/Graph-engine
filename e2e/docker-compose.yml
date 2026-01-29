@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  # Graph-engine service under test
+  graph-engine:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    ports:
+      - "50051:50051"
+    environment:
+      - LOG_LEVEL=debug
+    healthcheck:
+      test: ["CMD", "/app/graph-engined", "--help"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+      start_period: 5s
+    networks:
+      - e2e-network
+
+  # E2E test client (raw gRPC)
+  e2e-client:
+    build:
+      context: ..
+      dockerfile: e2e/client/Dockerfile
+    depends_on:
+      graph-engine:
+        condition: service_healthy
+    environment:
+      - GRAPH_ENGINE_ADDR=graph-engine:50051
+    networks:
+      - e2e-network
+    profiles:
+      - grpc
+      - all
+
+  # E2E test client using Go client library
+  e2e-go-client:
+    build:
+      context: ..
+      dockerfile: e2e/go-client/Dockerfile
+    depends_on:
+      graph-engine:
+        condition: service_healthy
+    environment:
+      - GRAPH_ENGINE_ADDR=graph-engine:50051
+    networks:
+      - e2e-network
+    profiles:
+      - go
+      - all
+
+  # E2E test client using Python client library
+  e2e-py-client:
+    build:
+      context: ..
+      dockerfile: e2e/py-client/Dockerfile
+    depends_on:
+      graph-engine:
+        condition: service_healthy
+    environment:
+      - GRAPH_ENGINE_ADDR=graph-engine:50051
+    networks:
+      - e2e-network
+    profiles:
+      - py
+      - all
+
+networks:
+  e2e-network:
+    driver: bridge

@@ -1,0 +1,541 @@
+syntax = "proto3";
+
+package graphengine.v1;
+
+option go_package = "github.com/naisa-ai/graph-engine/gen/graphengine/v1;gepb";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
+
+// =============================================================================
+// Core GraphEngine Service
+// =============================================================================
+
+service GraphEngine {
+  // Upload a full graph as a new build, returning a build_id.
+  // Client then calls PublishBuild to make it "current".
+  rpc BeginBuild(BeginBuildRequest) returns (BeginBuildResponse);
+
+  // Stream vertices/edges/columns into a build.
+  rpc Upload(stream UploadRequest) returns (UploadResponse);
+
+  // Optionally run batch artifacts (components/communities) then publish.
+  rpc PublishBuild(PublishBuildRequest) returns (PublishBuildResponse);
+
+  // Create a view of a published graph version (filters, neighborhoods, etc.).
+  rpc CreateView(CreateViewRequest) returns (CreateViewResponse);
+
+  // Run an algorithm on a graph version or view. Returns async job handle.
+  rpc Run(RunRequest) returns (RunResponse);
+
+  // Poll job status.
+  rpc GetJob(GetJobRequest) returns (GetJobResponse);
+
+  // Cancel a running job.
+  rpc CancelJob(CancelJobRequest) returns (CancelJobResponse);
+
+  // Stream result data back.
+  rpc GetResult(GetResultRequest) returns (stream ResultChunk);
+
+  // Release server-side resources early (optional; TTL/LRU also applies).
+  rpc Release(ReleaseRequest) returns (ReleaseResponse);
+}
+
+// =============================================================================
+// Handles / References
+// =============================================================================
+
+message GraphRef {
+  string graph_name = 1;
+
+  // If empty, uses "current published version".
+  string version_id = 2;
+}
+
+message ViewRef {
+  string view_id = 1;
+}
+
+message ResultRef {
+  string result_id = 1;
+}
+
+message JobRef {
+  string job_id = 1;
+}
+
+// =============================================================================
+// Build / Upload
+// =============================================================================
+
+message BeginBuildRequest {
+  string graph_name = 1;
+  bool directed = 2;
+
+  // Optional: external id format hints
+  enum NodeIdFormat {
+    NODE_ID_UINT64 = 0;
+    NODE_ID_STRING = 1;
+  }
+  NodeIdFormat node_id_format = 3;
+
+  // Canonical schema for vertex/edge columns.
+  Schema schema = 4;
+
+  // Optional metadata (tenant, environment, etc.)
+  map<string, string> labels = 5;
+}
+
+message BeginBuildResponse {
+  string build_id = 1;
+}
+
+message UploadRequest {
+  string build_id = 1;
+
+  oneof payload {
+    VertexChunk vertices = 10;
+    EdgeChunk edges = 11;
+    ColumnChunk vertex_columns = 12;
+    ColumnChunk edge_columns = 13;
+    // Optional: finalize marker; server can also infer from stream end.
+    bool finalize = 14;
+  }
+}
+
+message UploadResponse {
+  string build_id = 1;
+  uint64 received_vertices = 2;
+  uint64 received_edges = 3;
+}
+
+message PublishBuildRequest {
+  string build_id = 1;
+
+  // Whether to run standard batch artifacts before publish.
+  BatchArtifacts artifacts = 2;
+
+  // If true, publish even if some warnings occur (validation still blocks on errors).
+  bool allow_warnings = 3;
+}
+
+message PublishBuildResponse {
+  GraphRef graph = 1;
+  Status status = 2;
+}
+
+// Status represents the result of an operation.
+message Status {
+  int32 code = 1;
+  string message = 2;
+}
+
+message BatchArtifacts {
+  bool compute_components = 1;
+  bool compute_communities = 2;
+
+  // Optional: future additions (coreness, sampled betweenness)
+  bool compute_kcore = 3;
+  bool compute_betweenness_sampled = 4;
+}
+
+// =============================================================================
+// Schema / Columns
+// =============================================================================
+
+message Schema {
+  repeated ColumnDef vertex_columns = 1;
+  repeated ColumnDef edge_columns = 2;
+}
+
+message ColumnDef {
+  string name = 1;
+  ColumnType type = 2;
+}
+
+enum ColumnType {
+  COL_BOOL = 0;
+  COL_U32 = 1;
+  COL_U64 = 2;
+  COL_F32 = 3;
+  COL_F64 = 4;
+  COL_STRING = 5;
+}
+
+message VertexChunk {
+  repeated uint64 node_id_u64 = 1;
+  repeated string node_id_str = 2;
+}
+
+message EdgeChunk {
+  repeated uint64 src_u64 = 1;
+  repeated uint64 dst_u64 = 2;
+  repeated string src_str = 3;
+  repeated string dst_str = 4;
+
+  // Optional stable edge ids
+  repeated uint64 edge_id_u64 = 5;
+
+  // Optional minimal canonical fields (common enough to warrant first-class)
+  repeated uint32 kind = 6;
+  repeated float weight = 7;
+}
+
+message ColumnChunk {
+  // Column values must align with vertex or edge index order of the build.
+  string name = 1;
+  ColumnType type = 2;
+
+  repeated bool v_bool = 10;
+  repeated uint32 v_u32 = 11;
+  repeated uint64 v_u64 = 12;
+  repeated float v_f32 = 13;
+  repeated double v_f64 = 14;
+  repeated string v_string = 15;
+}
+
+// =============================================================================
+// Views
+// =============================================================================
+
+message CreateViewRequest {
+  GraphRef graph = 1;
+  ViewSpec spec = 2;
+}
+
+message CreateViewResponse {
+  ViewRef view = 1;
+  // Optional: counts without building a full subgraph
+  uint64 vcount = 2;
+  uint64 ecount = 3;
+}
+
+message ViewSpec {
+  // Combine vertex and edge filters; engine decides best strategy.
+  VertexFilter vfilter = 1;
+  EdgeFilter efilter = 2;
+
+  // Optional induced vertex set.
+  repeated uint64 induce_vertices_u64 = 3;
+  repeated string induce_vertices_str = 4;
+
+  // Optional neighborhood expansion (zoom-in)
+  NeighborhoodSpec neighborhood = 5;
+
+  // What-if exclusions
+  repeated uint64 exclude_vertices_u64 = 6;
+  repeated uint64 exclude_edges_u64 = 7;
+}
+
+message NeighborhoodSpec {
+  repeated uint64 seeds_u64 = 1;
+  uint32 hops = 2;
+  enum Mode {
+    MODE_ALL = 0;
+    MODE_OUT = 1;
+    MODE_IN = 2;
+  }
+  Mode mode = 3;
+}
+
+message VertexFilter {
+  // Simple canonical predicates. Extend over time.
+  repeated Predicate predicates = 1;
+}
+
+message EdgeFilter {
+  repeated Predicate predicates = 1;
+}
+
+message Predicate {
+  string column = 1;
+  enum Op {
+    OP_EQ = 0;
+    OP_IN = 1;
+    OP_RANGE = 2;
+    OP_EXISTS = 3;
+  }
+  Op op = 2;
+
+  // Oneof for values
+  oneof value {
+    bool b = 10;
+    uint32 u32 = 11;
+    uint64 u64 = 12;
+    float f32 = 13;
+    double f64 = 14;
+    string s = 15;
+
+    // IN list
+    U32List u32s = 20;
+    U64List u64s = 21;
+    StringList ss = 22;
+
+    // RANGE (inclusive)
+    RangeU32 range_u32 = 30;
+    RangeF64 range_f64 = 31;
+  }
+}
+
+message U32List {
+  repeated uint32 values = 1;
+}
+
+message U64List {
+  repeated uint64 values = 1;
+}
+
+message StringList {
+  repeated string values = 1;
+}
+
+message RangeU32 {
+  uint32 lo = 1;
+  uint32 hi = 2;
+}
+
+message RangeF64 {
+  double lo = 1;
+  double hi = 2;
+}
+
+// =============================================================================
+// Run Algorithms
+// =============================================================================
+
+message RunRequest {
+  oneof target {
+    GraphRef graph = 1;
+    ViewRef view = 2;
+  }
+
+  AlgoSpec algo = 3;
+
+  // Hints/controls
+  google.protobuf.Duration timeout = 10;
+  uint32 priority = 11;
+  bool allow_cache = 12;
+}
+
+message RunResponse {
+  JobRef job = 1;
+}
+
+message AlgoSpec {
+  oneof kind {
+    ComponentsSpec components = 1;
+    CommunitiesSpec communities = 2;
+
+    ShortestPathSpec shortest_path = 10;
+    KShortestPathsSpec k_shortest_paths = 11;
+
+    DistancesSpec distances = 12;
+    BFSSpec bfs = 13;
+    NeighborhoodQuerySpec neighborhood = 14;
+
+    STMinCutSpec st_mincut = 20;
+
+    CorridorSpec corridor = 30;
+  }
+}
+
+message ComponentsSpec {
+  enum Mode {
+    WEAK = 0;
+    STRONG = 1;
+  }
+  Mode mode = 1;
+}
+
+message CommunitiesSpec {
+  // Canonical placeholder; choose algorithms you support internally.
+  enum Method {
+    LEIDEN = 0;
+    LOUVAIN = 1;
+  }
+  Method method = 1;
+  // Optional resolution, iterations, etc.
+  double resolution = 2;
+}
+
+message ShortestPathSpec {
+  uint64 source_u64 = 1;
+  uint64 target_u64 = 2;
+
+  string weight_column = 3; // empty -> unweighted hops
+  bool return_edges = 4;
+  bool return_vertices = 5;
+}
+
+message DistancesSpec {
+  repeated uint64 sources_u64 = 1;
+  repeated uint64 targets_u64 = 2;
+  string weight_column = 3; // empty -> hop count
+}
+
+message BFSSpec {
+  uint64 source_u64 = 1;
+  uint32 max_depth = 2;
+  NeighborhoodSpec.Mode mode = 3;
+}
+
+message NeighborhoodQuerySpec {
+  repeated uint64 seeds_u64 = 1;
+  uint32 hops = 2;
+  NeighborhoodSpec.Mode mode = 3;
+}
+
+message KShortestPathsSpec {
+  uint64 source_u64 = 1;
+  uint64 target_u64 = 2;
+  uint32 k = 3;
+
+  string weight_column = 4;
+
+  // Optional constraints / guardrails
+  uint32 max_candidates = 10;
+  uint32 max_corridor_edges = 11;
+  google.protobuf.Duration per_path_timeout = 12;
+}
+
+message STMinCutSpec {
+  uint64 source_u64 = 1;
+  uint64 target_u64 = 2;
+  string capacity_column = 3; // if empty, treat all edges as capacity=1
+}
+
+message CorridorSpec {
+  uint64 source_u64 = 1;
+  uint64 target_u64 = 2;
+
+  enum Method {
+    SHORTEST_PATH_HULL = 0; // union of nodes/edges around shortest path
+    KSP_HULL = 1;           // hull around top-k paths
+    COMMUNITY_AWARE = 2;    // uses precomputed communities
+  }
+  Method method = 3;
+
+  uint32 hops = 4;   // for hull expansion
+  uint32 k = 5;      // if KSP_HULL
+}
+
+// =============================================================================
+// Jobs / Results
+// =============================================================================
+
+message GetJobRequest {
+  JobRef job = 1;
+}
+
+message GetJobResponse {
+  enum State {
+    PENDING = 0;
+    RUNNING = 1;
+    SUCCEEDED = 2;
+    FAILED = 3;
+    CANCELED = 4;
+  }
+  State state = 1;
+
+  google.protobuf.Timestamp started_at = 2;
+  google.protobuf.Timestamp finished_at = 3;
+
+  // If succeeded
+  ResultRef result = 10;
+
+  // If failed
+  Status status = 11;
+}
+
+message CancelJobRequest {
+  JobRef job = 1;
+}
+
+message CancelJobResponse {
+  bool canceled = 1;
+}
+
+message GetResultRequest {
+  ResultRef result = 1;
+}
+
+message ResultChunk {
+  // A typed stream of buffers.
+  oneof payload {
+    ResultHeader header = 1;
+
+    // Flat buffers
+    U32Buffer u32 = 10;
+    U64Buffer u64 = 11;
+    F64Buffer f64 = 12;
+    BytesBuffer bytes = 13;
+
+    // Optional structured messages (small)
+    ShortestPathResult shortest_path = 20;
+    STMinCutResult st_mincut = 21;
+    CorridorResult corridor = 22;
+
+    // Terminal marker
+    bool done = 99;
+  }
+}
+
+message ResultHeader {
+  string result_id = 1;
+  string type = 2; // e.g. "components", "ksp", "st_mincut"
+  uint64 vcount = 3;
+  uint64 ecount = 4;
+  map<string, string> meta = 5;
+}
+
+message U32Buffer {
+  string name = 1;
+  repeated uint32 values = 2;
+}
+
+message U64Buffer {
+  string name = 1;
+  repeated uint64 values = 2;
+}
+
+message F64Buffer {
+  string name = 1;
+  repeated double values = 2;
+}
+
+message BytesBuffer {
+  string name = 1;
+  bytes data = 2;
+}
+
+message ShortestPathResult {
+  repeated uint64 vertices_u64 = 1;
+  repeated uint64 edges_u64 = 2;
+  double total_cost = 3;
+}
+
+message STMinCutResult {
+  double cut_value = 1;
+  repeated uint64 source_side_vertices_u64 = 2;
+  repeated uint64 cut_edges_u64 = 3;
+}
+
+message CorridorResult {
+  ViewRef view = 1; // corridor view handle
+  map<string, string> meta = 2;
+}
+
+// =============================================================================
+// Release
+// =============================================================================
+
+message ReleaseRequest {
+  oneof target {
+    ViewRef view = 1;
+    ResultRef result = 2;
+  }
+}
+
+message ReleaseResponse {
+  bool released = 1;
+}

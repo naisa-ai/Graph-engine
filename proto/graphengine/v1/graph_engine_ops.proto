@@ -1,0 +1,146 @@
+syntax = "proto3";
+
+package graphengine.v1;
+
+option go_package = "github.com/naisa-ai/graph-engine/gen/graphengine/v1;gepb";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
+import "graphengine/v1/graph_engine.proto";
+
+// =============================================================================
+// GraphEngineOps Service - Operational & Troubleshooting APIs
+// =============================================================================
+
+service GraphEngineOps {
+  // Health check - basic serving status
+  rpc Health(HealthRequest) returns (HealthResponse);
+
+  // List all graphs with summary info
+  rpc ListGraphs(ListGraphsRequest) returns (ListGraphsResponse);
+
+  // Get detailed graph information
+  rpc DescribeGraph(DescribeGraphRequest) returns (DescribeGraphResponse);
+
+  // Cache statistics
+  rpc CacheStats(CacheStatsRequest) returns (CacheStatsResponse);
+
+  // Validate graph integrity
+  rpc ValidateGraph(ValidateGraphRequest) returns (ValidateGraphResponse);
+
+  // Trace job execution spans
+  rpc TraceJob(TraceJobRequest) returns (TraceJobResponse);
+
+  // Export subgraph data (guarded, small views only)
+  rpc ExportSubgraph(ExportSubgraphRequest) returns (stream ExportChunk);
+}
+
+// =============================================================================
+// Health
+// =============================================================================
+
+message HealthRequest {}
+
+message HealthResponse {
+  string status = 1; // "SERVING", "NOT_SERVING", etc.
+  map<string, string> meta = 2;
+}
+
+// =============================================================================
+// ListGraphs
+// =============================================================================
+
+message ListGraphsRequest {}
+
+message ListGraphsResponse {
+  repeated GraphSummary graphs = 1;
+}
+
+message GraphSummary {
+  string graph_name = 1;
+  string current_version_id = 2;
+  uint64 vcount = 3;
+  uint64 ecount = 4;
+  google.protobuf.Timestamp published_at = 5;
+}
+
+// =============================================================================
+// DescribeGraph
+// =============================================================================
+
+message DescribeGraphRequest {
+  GraphRef graph = 1;
+}
+
+message DescribeGraphResponse {
+  GraphSummary summary = 1;
+  Schema schema = 2;
+  map<string, string> labels = 3;
+}
+
+// =============================================================================
+// CacheStats
+// =============================================================================
+
+message CacheStatsRequest {}
+
+message CacheStatsResponse {
+  uint64 results_items = 1;
+  uint64 results_bytes = 2;
+  uint64 views_items = 3;
+  uint64 views_bytes = 4;
+}
+
+// =============================================================================
+// ValidateGraph
+// =============================================================================
+
+message ValidateGraphRequest {
+  GraphRef graph = 1;
+  bool deep = 2; // If true, perform deeper validation checks
+}
+
+message ValidateGraphResponse {
+  Status status = 1;
+  repeated string warnings = 2;
+  map<string, string> metrics = 3;
+}
+
+// =============================================================================
+// TraceJob
+// =============================================================================
+
+message TraceJobRequest {
+  JobRef job = 1;
+}
+
+message TraceJobResponse {
+  repeated TraceSpan spans = 1;
+}
+
+message TraceSpan {
+  string name = 1;
+  google.protobuf.Duration duration = 2;
+  map<string, string> tags = 3;
+}
+
+// =============================================================================
+// ExportSubgraph
+// =============================================================================
+
+message ExportSubgraphRequest {
+  oneof target {
+    GraphRef graph = 1;
+    ViewRef view = 2;
+  }
+
+  enum Format {
+    EDGE_LIST = 0;
+    CSV = 1;
+  }
+  Format format = 3;
+}
+
+message ExportChunk {
+  bytes data = 1;
+}

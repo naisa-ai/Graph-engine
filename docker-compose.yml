@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  graph-engine:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VERSION: ${VERSION:-dev}
+        BUILD_TIME: ${BUILD_TIME:-unknown}
+    container_name: graph-engine
+    ports:
+      - "50051:50051"
+      - "8080:8080"
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+    environment:
+      - TZ=UTC
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "/app/graph-engined", "--help"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # Optional: gRPC health check proxy (for HTTP health checks)
+  # grpc-health-proxy:
+  #   image: salrashid123/grpc_health_proxy:latest
+  #   ports:
+  #     - "8081:8081"
+  #   command: >
+  #     --grpcaddr=graph-engine:50051
+  #     --http-listen-addr=:8081
+  #     --logtostderr=1
+  #     --v=1
+  #   depends_on:
+  #     - graph-engine
+
+networks:
+  default:
+    name: graph-engine-network
