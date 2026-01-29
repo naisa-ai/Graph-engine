@@ -1772,6 +1772,933 @@ ge_status_t ge_run_communities_louvain_view(
 }
 
 // -----------------------------------------------------------------------------
+// Algorithm: Community Detection - Label Propagation
+// -----------------------------------------------------------------------------
+
+ge_status_t ge_run_communities_label_propagation(
+    const ge_graph_t* g,
+    ge_result_t** out
+) {
+    ge_ensure_thread_rng();
+    
+    if (!g || !out) {
+        set_error("invalid argument");
+        return GE_ERR_INVALID_ARG;
+    }
+    
+    igraph_vector_int_t membership;
+    igraph_error_t err = igraph_vector_int_init(&membership, 0);
+    if (err != IGRAPH_SUCCESS) {
+        set_error("igraph error: %d", err);
+        return GE_ERR_IGRAPH;
+    }
+    
+    err = igraph_community_label_propagation(
+        &g->g,
+        &membership,
+        IGRAPH_ALL,  // mode
+        NULL,        // weights
+        NULL,        // initial labels
+        NULL         // fixed labels
+    );
+    
+    if (err != IGRAPH_SUCCESS) {
+        igraph_vector_int_destroy(&membership);
+        set_error("igraph error running label propagation: %d", err);
+        return GE_ERR_IGRAPH;
+    }
+    
+    ge_result_t* r = create_result();
+    if (!r) {
+        igraph_vector_int_destroy(&membership);
+        set_error("out of memory");
+        return GE_ERR_OUT_OF_MEMORY;
+    }
+    
+    // Copy membership and count communities
+    size_t n = (size_t)igraph_vector_int_size(&membership);
+    uint32_t* membership_u32 = (uint32_t*)malloc(n * sizeof(uint32_t));
+    if (!membership_u32 && n > 0) {
+        igraph_vector_int_destroy(&membership);
+        ge_result_destroy(r);
+        set_error("out of memory");
+        return GE_ERR_OUT_OF_MEMORY;
+    }
+    
+    uint32_t max_comm = 0;
+    for (size_t i = 0; i < n; i++) {
+        membership_u32[i] = (uint32_t)VECTOR(membership)[i];
+        if (membership_u32[i] > max_comm) {
+            max_comm = membership_u32[i];
+        }
+    }
+    igraph_vector_int_destroy(&membership);
+    
+    ge_status_t status = add_buffer_u32(r, "membership", membership_u32, n);
+    if (status != GE_OK) {
+        free(membership_u32);
+        ge_result_destroy(r);
+        return status;
+    }
+    
+    // Compute modularity
+    igraph_real_t modularity;
+    igraph_vector_int_t membership_copy;
+    igraph_vector_int_init(&membership_copy, n);
+    for (size_t i = 0; i < n; i++) {
+        VECTOR(membership_copy)[i] = membership_u32[i];
+    }
+    free(membership_u32);
+    
+    igraph_modularity(&g->g, &membership_copy, NULL, 1.0, g->directed ? IGRAPH_DIRECTED : IGRAPH_UNDIRECTED, &modularity);
+    igraph_vector_int_destroy(&membership_copy);
+    
+    status = add_buffer_f64(r, "modularity", &modularity, 1);
+    if (status != GE_OK) {
+        ge_result_destroy(r);
+        return status;
+    }
+    
+    uint32_t n_communities = max_comm + 1;
+    status = add_buffer_u32(r, "num_communities", &n_communities, 1);
+    if (status != GE_OK) {
+        ge_result_destroy(r);
+        return status;
+    }
+    
+    *out = r;
+    return GE_OK;
+}
+
+ge_status_t ge_run_communities_label_propagation_view(
+    const ge_graph_t* g,
+    const ge_view_t* v,
+    ge_result_t** out
+) {
+    if (!g || !v || !out) {
+        set_error("invalid argument");
+        return GE_ERR_INVALID_ARG;
+    }
+    
+    ge_graph_t temp_g;
+    temp_g.g = v->g;
+    temp_g.n_vertices = v->n_vertices;
+    temp_g.m_edges = v->m_edges;
+    temp_g.directed = g->directed;
+    
+    return ge_run_communities_label_propagation(&temp_g, out);
+}
+
+// -----------------------------------------------------------------------------
+// Algorithm: Community Detection - Infomap
+// -----------------------------------------------------------------------------
+
+ge_status_t ge_run_communities_infomap(
+    const ge_graph_t* g,
+    uint32_t trials,
+    ge_result_t** out
+) {
+    ge_ensure_thread_rng();
+    
+    if (!g || !out) {
+        set_error("invalid argument");
+        return GE_ERR_INVALID_ARG;
+    }
+    
+    if (trials == 0) {
+        trials = 10;  // default
+    }
+    
+    igraph_vector_int_t membership;
+    igraph_real_t codelength;
+    
+    igraph_error_t err = igraph_vector_int_init(&membership, 0);
+    if (err != IGRAPH_SUCCESS) {
+        set_error("igraph error: %d", err);
+        return GE_ERR_IGRAPH;
+    }
+    
+    err = igraph_community_infomap(
+        &g->g,
+        NULL,        // edge weights
+        NULL,        // vertex weights
+        (igraph_integer_t)trials,
+        &membership,
+        &codelength
+    );
+    
+    if (err != IGRAPH_SUCCESS) {
+        igraph_vector_int_destroy(&membership);
+        set_error("igraph error running infomap: %d", err);
+        return GE_ERR_IGRAPH;
+    }
+    
+    ge_result_t* r = create_result();
+    if (!r) {
+        igraph_vector_int_destroy(&membership);
+        set_error("out of memory");
+        return GE_ERR_OUT_OF_MEMORY;
+    }
+    
+    // Copy membership and count communities
+    size_t n = (size_t)igraph_vector_int_size(&membership);
+    uint32_t* membership_u32 = (uint32_t*)malloc(n * sizeof(uint32_t));
+    if (!membership_u32 && n > 0) {
+        igraph_vector_int_destroy(&membership);
+        ge_result_destroy(r);
+        set_error("out of memory");
+        return GE_ERR_OUT_OF_MEMORY;
+    }
+    
+    uint32_t max_comm = 0;
+    for (size_t i = 0; i < n; i++) {
+        membership_u32[i] = (uint32_t)VECTOR(membership)[i];
+        if (membership_u32[i] > max_comm) {
+            max_comm = membership_u32[i];
+        }
+    }
+    igraph_vector_int_destroy(&membership);
+    
+    ge_status_t status = add_buffer_u32(r, "membership", membership_u32, n);
+    if (status != GE_OK) {
+        free(membership_u32);
+        ge_result_destroy(r);
+        return status;
+    }
+    
+    // Compute modularity
+    igraph_real_t modularity;
+    igraph_vector_int_t membership_copy;
+    igraph_vector_int_init(&membership_copy, n);
+    for (size_t i = 0; i < n; i++) {
+        VECTOR(membership_copy)[i] = membership_u32[i];
+    }
+    free(membership_u32);
+    
+    igraph_modularity(&g->g, &membership_copy, NULL, 1.0, g->directed ? IGRAPH_DIRECTED : IGRAPH_UNDIRECTED, &modularity);
+    igraph_vector_int_destroy(&membership_copy);
+    
+    status = add_buffer_f64(r, "modularity", &modularity, 1);
+    if (status != GE_OK) {
+        ge_result_destroy(r);
+        return status;
+    }
+    
+    uint32_t n_communities = max_comm + 1;
+    status = add_buffer_u32(r, "num_communities", &n_communities, 1);
+    if (status != GE_OK) {
+        ge_result_destroy(r);
+        return status;
+    }
+    
+    *out = r;
+    return GE_OK;
+}
+
+ge_status_t ge_run_communities_infomap_view(
+    const ge_graph_t* g,
+    const ge_view_t* v,
+    uint32_t trials,
+    ge_result_t** out
+) {
+    if (!g || !v || !out) {
+        set_error("invalid argument");
+        return GE_ERR_INVALID_ARG;
+    }
+    
+    ge_graph_t temp_g;
+    temp_g.g = v->g;
+    temp_g.n_vertices = v->n_vertices;
+    temp_g.m_edges = v->m_edges;
+    temp_g.directed = g->directed;
+    
+    return ge_run_communities_infomap(&temp_g, trials, out);
+}
+
+// -----------------------------------------------------------------------------
+// Algorithm: Community Detection - Walktrap
+// -----------------------------------------------------------------------------
+
+ge_status_t ge_run_communities_walktrap(
+    const ge_graph_t* g,
+    uint32_t steps,
+    ge_result_t** out
+) {
+    if (!g || !out) {
+        set_error("invalid argument");
+        return GE_ERR_INVALID_ARG;
+    }
+    
+    if (steps == 0) {
+        steps = 4;  // default
+    }
+    
+    igraph_vector_int_t membership;
+    igraph_matrix_int_t merges;
+    igraph_vector_t modularity_vec;
+    
+    igraph_error_t err = igraph_vector_int_init(&membership, 0);
+    if (err != IGRAPH_SUCCESS) {
+        set_error("igraph error: %d", err);
+        return GE_ERR_IGRAPH;
+    }
+    
+    err = igraph_matrix_int_init(&merges, 0, 0);
+    if (err != IGRAPH_SUCCESS) {
+        igraph_vector_int_destroy(&membership);
+        set_error("igraph error: %d", err);
+        return GE_ERR_IGRAPH;
+    }
+    
+    err = igraph_vector_init(&modularity_vec, 0);
+    if (err != IGRAPH_SUCCESS) {
+        igraph_vector_int_destroy(&membership);
+        igraph_matrix_int_destroy(&merges);
+        set_error("igraph error: %d", err);
+        return GE_ERR_IGRAPH;
+    }
+    
+    err = igraph_community_walktrap(
+        &g->g,
+        NULL,  // weights
+        (igraph_integer_t)steps,
+        &merges,
+        &modularity_vec,
+        &membership
+    );
+    
+    igraph_matrix_int_destroy(&merges);
+    
+    // Get final modularity (best cut)
+    igraph_real_t modularity = 0.0;
+    if (igraph_vector_size(&modularity_vec) > 0) {
+        // Find max modularity
+        for (igraph_integer_t i = 0; i < igraph_vector_size(&modularity_vec); i++) {
+            if (VECTOR(modularity_vec)[i] > modularity) {
+                modularity = VECTOR(modularity_vec)[i];
+            }
+        }
+    }
+    igraph_vector_destroy(&modularity_vec);
+    
+    if (err != IGRAPH_SUCCESS) {
+        igraph_vector_int_destroy(&membership);
+        set_error("igraph error running walktrap: %d", err);
+        return GE_ERR_IGRAPH;
+    }
+    
+    ge_result_t* r = create_result();
+    if (!r) {
+        igraph_vector_int_destroy(&membership);
+        set_error("out of memory");
+        return GE_ERR_OUT_OF_MEMORY;
+    }
+    
+    // Copy membership and count communities
+    size_t n = (size_t)igraph_vector_int_size(&membership);
+    uint32_t* membership_u32 = (uint32_t*)malloc(n * sizeof(uint32_t));
+    if (!membership_u32 && n > 0) {
+        igraph_vector_int_destroy(&membership);
+        ge_result_destroy(r);
+        set_error("out of memory");
+        return GE_ERR_OUT_OF_MEMORY;
+    }
+    
+    uint32_t max_comm = 0;
+    for (size_t i = 0; i < n; i++) {
+        membership_u32[i] = (uint32_t)VECTOR(membership)[i];
+        if (membership_u32[i] > max_comm) {
+            max_comm = membership_u32[i];
+        }
+    }
+    igraph_vector_int_destroy(&membership);
+    
+    ge_status_t status = add_buffer_u32(r, "membership", membership_u32, n);
+    free(membership_u32);
+    if (status != GE_OK) {
+        ge_result_destroy(r);
+        return status;
+    }
+    
+    status = add_buffer_f64(r, "modularity", &modularity, 1);
+    if (status != GE_OK) {
+        ge_result_destroy(r);
+        return status;
+    }
+    
+    uint32_t n_communities = max_comm + 1;
+    status = add_buffer_u32(r, "num_communities", &n_communities, 1);
+    if (status != GE_OK) {
+        ge_result_destroy(r);
+        return status;
+    }
+    
+    *out = r;
+    return GE_OK;
+}
+
+ge_status_t ge_run_communities_walktrap_view(
+    const ge_graph_t* g,
+    const ge_view_t* v,
+    uint32_t steps,
+    ge_result_t** out
+) {
+    if (!g || !v || !out) {
+        set_error("invalid argument");
+        return GE_ERR_INVALID_ARG;
+    }
+    
+    ge_graph_t temp_g;
+    temp_g.g = v->g;
+    temp_g.n_vertices = v->n_vertices;
+    temp_g.m_edges = v->m_edges;
+    temp_g.directed = g->directed;
+    
+    return ge_run_communities_walktrap(&temp_g, steps, out);
+}
+
+// -----------------------------------------------------------------------------
+// Algorithm: Community Detection - Fast Greedy
+// -----------------------------------------------------------------------------
+
+ge_status_t ge_run_communities_fast_greedy(
+    const ge_graph_t* g,
+    ge_result_t** out
+) {
+    if (!g || !out) {
+        set_error("invalid argument");
+        return GE_ERR_INVALID_ARG;
+    }
+    
+    igraph_vector_int_t membership;
+    igraph_matrix_int_t merges;
+    igraph_vector_t modularity_vec;
+    
+    igraph_error_t err = igraph_vector_int_init(&membership, 0);
+    if (err != IGRAPH_SUCCESS) {
+        set_error("igraph error: %d", err);
+        return GE_ERR_IGRAPH;
+    }
+    
+    err = igraph_matrix_int_init(&merges, 0, 0);
+    if (err != IGRAPH_SUCCESS) {
+        igraph_vector_int_destroy(&membership);
+        set_error("igraph error: %d", err);
+        return GE_ERR_IGRAPH;
+    }
+    
+    err = igraph_vector_init(&modularity_vec, 0);
+    if (err != IGRAPH_SUCCESS) {
+        igraph_vector_int_destroy(&membership);
+        igraph_matrix_int_destroy(&merges);
+        set_error("igraph error: %d", err);
+        return GE_ERR_IGRAPH;
+    }
+    
+    err = igraph_community_fastgreedy(
+        &g->g,
+        NULL,  // weights
+        &merges,
+        &modularity_vec,
+        &membership
+    );
+    
+    igraph_matrix_int_destroy(&merges);
+    
+    // Get final modularity (best cut)
+    igraph_real_t modularity = 0.0;
+    if (igraph_vector_size(&modularity_vec) > 0) {
+        for (igraph_integer_t i = 0; i < igraph_vector_size(&modularity_vec); i++) {
+            if (VECTOR(modularity_vec)[i] > modularity) {
+                modularity = VECTOR(modularity_vec)[i];
+            }
+        }
+    }
+    igraph_vector_destroy(&modularity_vec);
+    
+    if (err != IGRAPH_SUCCESS) {
+        igraph_vector_int_destroy(&membership);
+        set_error("igraph error running fast greedy: %d", err);
+        return GE_ERR_IGRAPH;
+    }
+    
+    ge_result_t* r = create_result();
+    if (!r) {
+        igraph_vector_int_destroy(&membership);
+        set_error("out of memory");
+        return GE_ERR_OUT_OF_MEMORY;
+    }
+    
+    // Copy membership and count communities
+    size_t n = (size_t)igraph_vector_int_size(&membership);
+    uint32_t* membership_u32 = (uint32_t*)malloc(n * sizeof(uint32_t));
+    if (!membership_u32 && n > 0) {
+        igraph_vector_int_destroy(&membership);
+        ge_result_destroy(r);
+        set_error("out of memory");
+        return GE_ERR_OUT_OF_MEMORY;
+    }
+    
+    uint32_t max_comm = 0;
+    for (size_t i = 0; i < n; i++) {
+        membership_u32[i] = (uint32_t)VECTOR(membership)[i];
+        if (membership_u32[i] > max_comm) {
+            max_comm = membership_u32[i];
+        }
+    }
+    igraph_vector_int_destroy(&membership);
+    
+    ge_status_t status = add_buffer_u32(r, "membership", membership_u32, n);
+    free(membership_u32);
+    if (status != GE_OK) {
+        ge_result_destroy(r);
+        return status;
+    }
+    
+    status = add_buffer_f64(r, "modularity", &modularity, 1);
+    if (status != GE_OK) {
+        ge_result_destroy(r);
+        return status;
+    }
+    
+    uint32_t n_communities = max_comm + 1;
+    status = add_buffer_u32(r, "num_communities", &n_communities, 1);
+    if (status != GE_OK) {
+        ge_result_destroy(r);
+        return status;
+    }
+    
+    *out = r;
+    return GE_OK;
+}
+
+ge_status_t ge_run_communities_fast_greedy_view(
+    const ge_graph_t* g,
+    const ge_view_t* v,
+    ge_result_t** out
+) {
+    if (!g || !v || !out) {
+        set_error("invalid argument");
+        return GE_ERR_INVALID_ARG;
+    }
+    
+    ge_graph_t temp_g;
+    temp_g.g = v->g;
+    temp_g.n_vertices = v->n_vertices;
+    temp_g.m_edges = v->m_edges;
+    temp_g.directed = g->directed;
+    
+    return ge_run_communities_fast_greedy(&temp_g, out);
+}
+
+// -----------------------------------------------------------------------------
+// Algorithm: Community Detection - Edge Betweenness
+// -----------------------------------------------------------------------------
+
+ge_status_t ge_run_communities_edge_betweenness(
+    const ge_graph_t* g,
+    ge_result_t** out
+) {
+    if (!g || !out) {
+        set_error("invalid argument");
+        return GE_ERR_INVALID_ARG;
+    }
+    
+    igraph_vector_int_t membership;
+    igraph_matrix_int_t merges;
+    igraph_vector_int_t bridges;
+    igraph_vector_t modularity_vec;
+    
+    igraph_error_t err = igraph_vector_int_init(&membership, 0);
+    if (err != IGRAPH_SUCCESS) {
+        set_error("igraph error: %d", err);
+        return GE_ERR_IGRAPH;
+    }
+    
+    err = igraph_matrix_int_init(&merges, 0, 0);
+    if (err != IGRAPH_SUCCESS) {
+        igraph_vector_int_destroy(&membership);
+        set_error("igraph error: %d", err);
+        return GE_ERR_IGRAPH;
+    }
+    
+    err = igraph_vector_int_init(&bridges, 0);
+    if (err != IGRAPH_SUCCESS) {
+        igraph_vector_int_destroy(&membership);
+        igraph_matrix_int_destroy(&merges);
+        set_error("igraph error: %d", err);
+        return GE_ERR_IGRAPH;
+    }
+    
+    err = igraph_vector_init(&modularity_vec, 0);
+    if (err != IGRAPH_SUCCESS) {
+        igraph_vector_int_destroy(&membership);
+        igraph_matrix_int_destroy(&merges);
+        igraph_vector_int_destroy(&bridges);
+        set_error("igraph error: %d", err);
+        return GE_ERR_IGRAPH;
+    }
+    
+    err = igraph_community_edge_betweenness(
+        &g->g,
+        NULL,       // result (edge betweenness values - not needed)
+        NULL,       // edge_betweenness
+        &merges,
+        &bridges,
+        &modularity_vec,
+        &membership,
+        g->directed ? IGRAPH_DIRECTED : IGRAPH_UNDIRECTED,
+        NULL        // weights
+    );
+    
+    igraph_matrix_int_destroy(&merges);
+    igraph_vector_int_destroy(&bridges);
+    
+    // Get final modularity (best cut)
+    igraph_real_t modularity = 0.0;
+    if (igraph_vector_size(&modularity_vec) > 0) {
+        for (igraph_integer_t i = 0; i < igraph_vector_size(&modularity_vec); i++) {
+            if (VECTOR(modularity_vec)[i] > modularity) {
+                modularity = VECTOR(modularity_vec)[i];
+            }
+        }
+    }
+    igraph_vector_destroy(&modularity_vec);
+    
+    if (err != IGRAPH_SUCCESS) {
+        igraph_vector_int_destroy(&membership);
+        set_error("igraph error running edge betweenness: %d", err);
+        return GE_ERR_IGRAPH;
+    }
+    
+    ge_result_t* r = create_result();
+    if (!r) {
+        igraph_vector_int_destroy(&membership);
+        set_error("out of memory");
+        return GE_ERR_OUT_OF_MEMORY;
+    }
+    
+    // Copy membership and count communities
+    size_t n = (size_t)igraph_vector_int_size(&membership);
+    uint32_t* membership_u32 = (uint32_t*)malloc(n * sizeof(uint32_t));
+    if (!membership_u32 && n > 0) {
+        igraph_vector_int_destroy(&membership);
+        ge_result_destroy(r);
+        set_error("out of memory");
+        return GE_ERR_OUT_OF_MEMORY;
+    }
+    
+    uint32_t max_comm = 0;
+    for (size_t i = 0; i < n; i++) {
+        membership_u32[i] = (uint32_t)VECTOR(membership)[i];
+        if (membership_u32[i] > max_comm) {
+            max_comm = membership_u32[i];
+        }
+    }
+    igraph_vector_int_destroy(&membership);
+    
+    ge_status_t status = add_buffer_u32(r, "membership", membership_u32, n);
+    free(membership_u32);
+    if (status != GE_OK) {
+        ge_result_destroy(r);
+        return status;
+    }
+    
+    status = add_buffer_f64(r, "modularity", &modularity, 1);
+    if (status != GE_OK) {
+        ge_result_destroy(r);
+        return status;
+    }
+    
+    uint32_t n_communities = max_comm + 1;
+    status = add_buffer_u32(r, "num_communities", &n_communities, 1);
+    if (status != GE_OK) {
+        ge_result_destroy(r);
+        return status;
+    }
+    
+    *out = r;
+    return GE_OK;
+}
+
+ge_status_t ge_run_communities_edge_betweenness_view(
+    const ge_graph_t* g,
+    const ge_view_t* v,
+    ge_result_t** out
+) {
+    if (!g || !v || !out) {
+        set_error("invalid argument");
+        return GE_ERR_INVALID_ARG;
+    }
+    
+    ge_graph_t temp_g;
+    temp_g.g = v->g;
+    temp_g.n_vertices = v->n_vertices;
+    temp_g.m_edges = v->m_edges;
+    temp_g.directed = g->directed;
+    
+    return ge_run_communities_edge_betweenness(&temp_g, out);
+}
+
+// -----------------------------------------------------------------------------
+// Algorithm: Community Detection - Leading Eigenvector
+// -----------------------------------------------------------------------------
+
+ge_status_t ge_run_communities_leading_eigenvector(
+    const ge_graph_t* g,
+    ge_result_t** out
+) {
+    if (!g || !out) {
+        set_error("invalid argument");
+        return GE_ERR_INVALID_ARG;
+    }
+    
+    igraph_vector_int_t membership;
+    igraph_real_t modularity;
+    igraph_arpack_options_t arpack_opts;
+    
+    igraph_arpack_options_init(&arpack_opts);
+    
+    igraph_error_t err = igraph_vector_int_init(&membership, 0);
+    if (err != IGRAPH_SUCCESS) {
+        set_error("igraph error: %d", err);
+        return GE_ERR_IGRAPH;
+    }
+    
+    err = igraph_community_leading_eigenvector(
+        &g->g,
+        NULL,         // weights
+        NULL,         // merges
+        &membership,
+        -1,           // steps (-1 = until no more splits)
+        &arpack_opts,
+        &modularity,
+        0,            // start (from scratch)
+        NULL,         // eigenvalues
+        NULL,         // eigenvectors
+        NULL,         // history
+        NULL,         // callback
+        NULL          // callback_extra
+    );
+    
+    if (err != IGRAPH_SUCCESS) {
+        igraph_vector_int_destroy(&membership);
+        set_error("igraph error running leading eigenvector: %d", err);
+        return GE_ERR_IGRAPH;
+    }
+    
+    ge_result_t* r = create_result();
+    if (!r) {
+        igraph_vector_int_destroy(&membership);
+        set_error("out of memory");
+        return GE_ERR_OUT_OF_MEMORY;
+    }
+    
+    // Copy membership and count communities
+    size_t n = (size_t)igraph_vector_int_size(&membership);
+    uint32_t* membership_u32 = (uint32_t*)malloc(n * sizeof(uint32_t));
+    if (!membership_u32 && n > 0) {
+        igraph_vector_int_destroy(&membership);
+        ge_result_destroy(r);
+        set_error("out of memory");
+        return GE_ERR_OUT_OF_MEMORY;
+    }
+    
+    uint32_t max_comm = 0;
+    for (size_t i = 0; i < n; i++) {
+        membership_u32[i] = (uint32_t)VECTOR(membership)[i];
+        if (membership_u32[i] > max_comm) {
+            max_comm = membership_u32[i];
+        }
+    }
+    igraph_vector_int_destroy(&membership);
+    
+    ge_status_t status = add_buffer_u32(r, "membership", membership_u32, n);
+    free(membership_u32);
+    if (status != GE_OK) {
+        ge_result_destroy(r);
+        return status;
+    }
+    
+    status = add_buffer_f64(r, "modularity", &modularity, 1);
+    if (status != GE_OK) {
+        ge_result_destroy(r);
+        return status;
+    }
+    
+    uint32_t n_communities = max_comm + 1;
+    status = add_buffer_u32(r, "num_communities", &n_communities, 1);
+    if (status != GE_OK) {
+        ge_result_destroy(r);
+        return status;
+    }
+    
+    *out = r;
+    return GE_OK;
+}
+
+ge_status_t ge_run_communities_leading_eigenvector_view(
+    const ge_graph_t* g,
+    const ge_view_t* v,
+    ge_result_t** out
+) {
+    if (!g || !v || !out) {
+        set_error("invalid argument");
+        return GE_ERR_INVALID_ARG;
+    }
+    
+    ge_graph_t temp_g;
+    temp_g.g = v->g;
+    temp_g.n_vertices = v->n_vertices;
+    temp_g.m_edges = v->m_edges;
+    temp_g.directed = g->directed;
+    
+    return ge_run_communities_leading_eigenvector(&temp_g, out);
+}
+
+// -----------------------------------------------------------------------------
+// Algorithm: Community Detection - Spinglass
+// -----------------------------------------------------------------------------
+
+ge_status_t ge_run_communities_spinglass(
+    const ge_graph_t* g,
+    uint32_t spins,
+    double gamma,
+    ge_result_t** out
+) {
+    ge_ensure_thread_rng();
+    
+    if (!g || !out) {
+        set_error("invalid argument");
+        return GE_ERR_INVALID_ARG;
+    }
+    
+    if (spins == 0) {
+        spins = 25;  // default
+    }
+    if (gamma <= 0) {
+        gamma = 1.0;  // default
+    }
+    
+    // Spinglass requires a connected graph
+    igraph_bool_t is_connected;
+    igraph_error_t err = igraph_is_connected(&g->g, &is_connected, IGRAPH_WEAK);
+    if (err != IGRAPH_SUCCESS) {
+        set_error("igraph error checking connectivity: %d", err);
+        return GE_ERR_IGRAPH;
+    }
+    
+    if (!is_connected) {
+        set_error("spinglass algorithm requires a connected graph");
+        return GE_ERR_INVALID_ARG;
+    }
+    
+    igraph_vector_int_t membership;
+    igraph_real_t modularity;
+    igraph_real_t temperature;
+    
+    err = igraph_vector_int_init(&membership, 0);
+    if (err != IGRAPH_SUCCESS) {
+        set_error("igraph error: %d", err);
+        return GE_ERR_IGRAPH;
+    }
+    
+    err = igraph_community_spinglass(
+        &g->g,
+        NULL,           // weights
+        &modularity,
+        &temperature,
+        &membership,
+        NULL,           // csize
+        (igraph_integer_t)spins,
+        0,              // parupdate (parallel update)
+        1.0,            // starttemp
+        0.01,           // stoptemp
+        0.99,           // coolfact
+        IGRAPH_SPINCOMM_UPDATE_CONFIG,
+        gamma,
+        IGRAPH_SPINCOMM_IMP_ORIG,
+        0.0             // gamma_minus (for negative weights)
+    );
+    
+    if (err != IGRAPH_SUCCESS) {
+        igraph_vector_int_destroy(&membership);
+        set_error("igraph error running spinglass: %d", err);
+        return GE_ERR_IGRAPH;
+    }
+    
+    ge_result_t* r = create_result();
+    if (!r) {
+        igraph_vector_int_destroy(&membership);
+        set_error("out of memory");
+        return GE_ERR_OUT_OF_MEMORY;
+    }
+    
+    // Copy membership and count communities
+    size_t n = (size_t)igraph_vector_int_size(&membership);
+    uint32_t* membership_u32 = (uint32_t*)malloc(n * sizeof(uint32_t));
+    if (!membership_u32 && n > 0) {
+        igraph_vector_int_destroy(&membership);
+        ge_result_destroy(r);
+        set_error("out of memory");
+        return GE_ERR_OUT_OF_MEMORY;
+    }
+    
+    uint32_t max_comm = 0;
+    for (size_t i = 0; i < n; i++) {
+        membership_u32[i] = (uint32_t)VECTOR(membership)[i];
+        if (membership_u32[i] > max_comm) {
+            max_comm = membership_u32[i];
+        }
+    }
+    igraph_vector_int_destroy(&membership);
+    
+    ge_status_t status = add_buffer_u32(r, "membership", membership_u32, n);
+    free(membership_u32);
+    if (status != GE_OK) {
+        ge_result_destroy(r);
+        return status;
+    }
+    
+    status = add_buffer_f64(r, "modularity", &modularity, 1);
+    if (status != GE_OK) {
+        ge_result_destroy(r);
+        return status;
+    }
+    
+    uint32_t n_communities = max_comm + 1;
+    status = add_buffer_u32(r, "num_communities", &n_communities, 1);
+    if (status != GE_OK) {
+        ge_result_destroy(r);
+        return status;
+    }
+    
+    *out = r;
+    return GE_OK;
+}
+
+ge_status_t ge_run_communities_spinglass_view(
+    const ge_graph_t* g,
+    const ge_view_t* v,
+    uint32_t spins,
+    double gamma,
+    ge_result_t** out
+) {
+    if (!g || !v || !out) {
+        set_error("invalid argument");
+        return GE_ERR_INVALID_ARG;
+    }
+    
+    ge_graph_t temp_g;
+    temp_g.g = v->g;
+    temp_g.n_vertices = v->n_vertices;
+    temp_g.m_edges = v->m_edges;
+    temp_g.directed = g->directed;
+    
+    return ge_run_communities_spinglass(&temp_g, spins, gamma, out);
+}
+
+// -----------------------------------------------------------------------------
 // Algorithm: K-Core Decomposition
 // -----------------------------------------------------------------------------
 

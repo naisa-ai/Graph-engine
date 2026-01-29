@@ -24,6 +24,11 @@ type PathResult struct {
 
 // ComponentsResult represents connected components result.
 type ComponentsResult struct {
+	// NodeIDs are the external node IDs corresponding to each membership value.
+	// NodeIDs[i] is the external node ID for vertex with internal index i.
+	NodeIDs []uint64
+	// Membership contains the component/community ID for each vertex.
+	// Membership[i] is the component/community ID for node NodeIDs[i].
 	Membership    []uint32
 	NumComponents int
 }
@@ -597,6 +602,17 @@ func (c *Client) collectComponentsResult(ctx context.Context, result *gepb.Resul
 			return nil, err
 		}
 
+		// New ComponentsResult format with node_ids and membership
+		if components := chunk.GetComponents(); components != nil {
+			comp.NodeIDs = components.NodeIdsU64
+			comp.Membership = components.Membership
+			comp.NumComponents = int(components.NumComponents)
+			for _, c := range components.Membership {
+				componentSet[c] = true
+			}
+		}
+
+		// Legacy U32 buffer format (fallback)
 		if u32 := chunk.GetU32(); u32 != nil && u32.Name == "membership" {
 			comp.Membership = u32.Values
 			for _, c := range u32.Values {
@@ -605,7 +621,10 @@ func (c *Client) collectComponentsResult(ctx context.Context, result *gepb.Resul
 		}
 	}
 
-	comp.NumComponents = len(componentSet)
+	// Compute num_components from the set if not set from protobuf
+	if comp.NumComponents == 0 && len(componentSet) > 0 {
+		comp.NumComponents = len(componentSet)
+	}
 	return comp, nil
 }
 

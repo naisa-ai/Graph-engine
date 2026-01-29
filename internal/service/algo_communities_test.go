@@ -548,4 +548,282 @@ func TestCommunityAlgorithm_String(t *testing.T) {
 	if CommunityAlgorithmLouvain.String() != "louvain" {
 		t.Errorf("expected 'louvain', got %s", CommunityAlgorithmLouvain.String())
 	}
+	if CommunityAlgorithmLabelPropagation.String() != "label_propagation" {
+		t.Errorf("expected 'label_propagation', got %s", CommunityAlgorithmLabelPropagation.String())
+	}
+	if CommunityAlgorithmInfomap.String() != "infomap" {
+		t.Errorf("expected 'infomap', got %s", CommunityAlgorithmInfomap.String())
+	}
+	if CommunityAlgorithmWalktrap.String() != "walktrap" {
+		t.Errorf("expected 'walktrap', got %s", CommunityAlgorithmWalktrap.String())
+	}
+	if CommunityAlgorithmFastGreedy.String() != "fast_greedy" {
+		t.Errorf("expected 'fast_greedy', got %s", CommunityAlgorithmFastGreedy.String())
+	}
+	if CommunityAlgorithmEdgeBetweenness.String() != "edge_betweenness" {
+		t.Errorf("expected 'edge_betweenness', got %s", CommunityAlgorithmEdgeBetweenness.String())
+	}
+	if CommunityAlgorithmLeadingEigenvector.String() != "leading_eigenvector" {
+		t.Errorf("expected 'leading_eigenvector', got %s", CommunityAlgorithmLeadingEigenvector.String())
+	}
+	if CommunityAlgorithmSpinglass.String() != "spinglass" {
+		t.Errorf("expected 'spinglass', got %s", CommunityAlgorithmSpinglass.String())
+	}
+}
+
+func TestComputeCommunities_LabelPropagation(t *testing.T) {
+	version := createTwoCliquesGraph()
+	ctx := context.Background()
+	g := createShimGraphForCommunities(version)
+	if g == nil {
+		t.Fatal("failed to create shim graph")
+	}
+	defer g.Close()
+	shimCfg := &CommunitiesShimConfig{
+		UseShim:   true,
+		ShimGraph: g,
+	}
+
+	config := &CommunitiesConfig{
+		Algorithm: CommunityAlgorithmLabelPropagation,
+	}
+	result, err := ComputeCommunities(ctx, version, nil, config, shimCfg)
+	if err != nil {
+		t.Fatalf("ComputeCommunities (LabelPropagation) failed: %v", err)
+	}
+
+	if result.Meta["algorithm"] != "label_propagation" {
+		t.Errorf("expected algorithm=label_propagation, got %s", result.Meta["algorithm"])
+	}
+
+	t.Logf("LabelPropagation test: %d communities, modularity=%.4f", result.NumCommunities, result.Modularity)
+}
+
+func TestComputeCommunities_Infomap(t *testing.T) {
+	version := createTwoCliquesGraph()
+	ctx := context.Background()
+	g := createShimGraphForCommunities(version)
+	if g == nil {
+		t.Fatal("failed to create shim graph")
+	}
+	defer g.Close()
+	shimCfg := &CommunitiesShimConfig{
+		UseShim:   true,
+		ShimGraph: g,
+	}
+
+	config := &CommunitiesConfig{
+		Algorithm: CommunityAlgorithmInfomap,
+		Trials:    10,
+	}
+	result, err := ComputeCommunities(ctx, version, nil, config, shimCfg)
+	if err != nil {
+		t.Fatalf("ComputeCommunities (Infomap) failed: %v", err)
+	}
+
+	if result.Meta["algorithm"] != "infomap" {
+		t.Errorf("expected algorithm=infomap, got %s", result.Meta["algorithm"])
+	}
+
+	t.Logf("Infomap test: %d communities, modularity=%.4f", result.NumCommunities, result.Modularity)
+}
+
+func TestComputeCommunities_Walktrap(t *testing.T) {
+	version := createTwoCliquesGraph()
+	ctx := context.Background()
+	g := createShimGraphForCommunities(version)
+	if g == nil {
+		t.Fatal("failed to create shim graph")
+	}
+	defer g.Close()
+	shimCfg := &CommunitiesShimConfig{
+		UseShim:   true,
+		ShimGraph: g,
+	}
+
+	config := &CommunitiesConfig{
+		Algorithm: CommunityAlgorithmWalktrap,
+		Steps:     4,
+	}
+	result, err := ComputeCommunities(ctx, version, nil, config, shimCfg)
+	if err != nil {
+		t.Fatalf("ComputeCommunities (Walktrap) failed: %v", err)
+	}
+
+	if result.Meta["algorithm"] != "walktrap" {
+		t.Errorf("expected algorithm=walktrap, got %s", result.Meta["algorithm"])
+	}
+
+	t.Logf("Walktrap test: %d communities, modularity=%.4f", result.NumCommunities, result.Modularity)
+}
+
+func TestComputeCommunities_FastGreedy(t *testing.T) {
+	version := createTwoCliquesGraph()
+	ctx := context.Background()
+	g := createShimGraphForCommunities(version)
+	if g == nil {
+		t.Fatal("failed to create shim graph")
+	}
+	defer g.Close()
+	shimCfg := &CommunitiesShimConfig{
+		UseShim:   true,
+		ShimGraph: g,
+	}
+
+	config := &CommunitiesConfig{
+		Algorithm: CommunityAlgorithmFastGreedy,
+	}
+	result, err := ComputeCommunities(ctx, version, nil, config, shimCfg)
+	if err != nil {
+		t.Fatalf("ComputeCommunities (FastGreedy) failed: %v", err)
+	}
+
+	if result.Meta["algorithm"] != "fast_greedy" {
+		t.Errorf("expected algorithm=fast_greedy, got %s", result.Meta["algorithm"])
+	}
+
+	t.Logf("FastGreedy test: %d communities, modularity=%.4f", result.NumCommunities, result.Modularity)
+}
+
+func TestComputeCommunities_EdgeBetweenness(t *testing.T) {
+	version := createTwoCliquesGraph()
+	ctx := context.Background()
+	g := createShimGraphForCommunities(version)
+	if g == nil {
+		t.Fatal("failed to create shim graph")
+	}
+	defer g.Close()
+	shimCfg := &CommunitiesShimConfig{
+		UseShim:   true,
+		ShimGraph: g,
+	}
+
+	config := &CommunitiesConfig{
+		Algorithm: CommunityAlgorithmEdgeBetweenness,
+	}
+	result, err := ComputeCommunities(ctx, version, nil, config, shimCfg)
+	if err != nil {
+		t.Fatalf("ComputeCommunities (EdgeBetweenness) failed: %v", err)
+	}
+
+	if result.Meta["algorithm"] != "edge_betweenness" {
+		t.Errorf("expected algorithm=edge_betweenness, got %s", result.Meta["algorithm"])
+	}
+
+	t.Logf("EdgeBetweenness test: %d communities, modularity=%.4f", result.NumCommunities, result.Modularity)
+}
+
+func TestComputeCommunities_LeadingEigenvector(t *testing.T) {
+	version := createTwoCliquesGraph()
+	ctx := context.Background()
+	g := createShimGraphForCommunities(version)
+	if g == nil {
+		t.Fatal("failed to create shim graph")
+	}
+	defer g.Close()
+	shimCfg := &CommunitiesShimConfig{
+		UseShim:   true,
+		ShimGraph: g,
+	}
+
+	config := &CommunitiesConfig{
+		Algorithm: CommunityAlgorithmLeadingEigenvector,
+	}
+	result, err := ComputeCommunities(ctx, version, nil, config, shimCfg)
+	if err != nil {
+		t.Fatalf("ComputeCommunities (LeadingEigenvector) failed: %v", err)
+	}
+
+	if result.Meta["algorithm"] != "leading_eigenvector" {
+		t.Errorf("expected algorithm=leading_eigenvector, got %s", result.Meta["algorithm"])
+	}
+
+	t.Logf("LeadingEigenvector test: %d communities, modularity=%.4f", result.NumCommunities, result.Modularity)
+}
+
+func TestComputeCommunities_Spinglass(t *testing.T) {
+	// Use single clique graph for spinglass (requires connected graph)
+	version := createSingleCliqueGraph()
+	ctx := context.Background()
+	g := createShimGraphForCommunities(version)
+	if g == nil {
+		t.Fatal("failed to create shim graph")
+	}
+	defer g.Close()
+	shimCfg := &CommunitiesShimConfig{
+		UseShim:   true,
+		ShimGraph: g,
+	}
+
+	config := &CommunitiesConfig{
+		Algorithm: CommunityAlgorithmSpinglass,
+		Spins:     25,
+		Gamma:     1.0,
+	}
+	result, err := ComputeCommunities(ctx, version, nil, config, shimCfg)
+	if err != nil {
+		t.Fatalf("ComputeCommunities (Spinglass) failed: %v", err)
+	}
+
+	if result.Meta["algorithm"] != "spinglass" {
+		t.Errorf("expected algorithm=spinglass, got %s", result.Meta["algorithm"])
+	}
+
+	t.Logf("Spinglass test: %d communities, modularity=%.4f", result.NumCommunities, result.Modularity)
+}
+
+func TestParseCommunityAlgorithm_AllAlgorithms(t *testing.T) {
+	testCases := []struct {
+		input    string
+		expected CommunityAlgorithm
+	}{
+		{"leiden", CommunityAlgorithmLeiden},
+		{"louvain", CommunityAlgorithmLouvain},
+		{"label_propagation", CommunityAlgorithmLabelPropagation},
+		{"infomap", CommunityAlgorithmInfomap},
+		{"walktrap", CommunityAlgorithmWalktrap},
+		{"fast_greedy", CommunityAlgorithmFastGreedy},
+		{"edge_betweenness", CommunityAlgorithmEdgeBetweenness},
+		{"leading_eigenvector", CommunityAlgorithmLeadingEigenvector},
+		{"spinglass", CommunityAlgorithmSpinglass},
+		{"", CommunityAlgorithmLeiden}, // default
+	}
+
+	for _, tc := range testCases {
+		algo, err := ParseCommunityAlgorithm(tc.input)
+		if err != nil {
+			t.Errorf("ParseCommunityAlgorithm(%q) unexpected error: %v", tc.input, err)
+			continue
+		}
+		if algo != tc.expected {
+			t.Errorf("ParseCommunityAlgorithm(%q) = %v, want %v", tc.input, algo, tc.expected)
+		}
+	}
+
+	// Test invalid algorithm
+	_, err := ParseCommunityAlgorithm("invalid_algorithm")
+	if err == nil {
+		t.Error("expected error for invalid algorithm")
+	}
+}
+
+func TestValidateCommunitiesRequest_AllAlgorithms(t *testing.T) {
+	validAlgorithms := []string{
+		"leiden", "louvain", "label_propagation", "infomap",
+		"walktrap", "fast_greedy", "edge_betweenness",
+		"leading_eigenvector", "spinglass", "",
+	}
+
+	for _, algo := range validAlgorithms {
+		err := ValidateCommunitiesRequest(algo, 1.0)
+		if err != nil {
+			t.Errorf("ValidateCommunitiesRequest(%q, 1.0) unexpected error: %v", algo, err)
+		}
+	}
+
+	// Test invalid algorithm
+	err := ValidateCommunitiesRequest("invalid_algorithm", 1.0)
+	if err == nil {
+		t.Error("expected error for invalid algorithm")
+	}
 }

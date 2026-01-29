@@ -253,6 +253,7 @@ func TestIntegrationFullFlow(t *testing.T) {
 		}
 
 		var membership []uint32
+		var nodeIDs []uint64
 		var gotHeader, gotDone bool
 
 		for {
@@ -268,10 +269,18 @@ func TestIntegrationFullFlow(t *testing.T) {
 			case *gepb.ResultChunk_Header:
 				gotHeader = true
 				t.Logf("Header: type=%s", payload.Header.Type)
+			case *gepb.ResultChunk_Components:
+				// New ComponentsResult format with node_ids and membership
+				nodeIDs = payload.Components.NodeIdsU64
+				membership = payload.Components.Membership
+				t.Logf("NodeIDs: %v", nodeIDs)
+				t.Logf("Membership: %v", membership)
+				t.Logf("NumComponents: %d", payload.Components.NumComponents)
 			case *gepb.ResultChunk_U32:
+				// Legacy U32 buffer format (fallback)
 				if payload.U32.Name == "membership" {
 					membership = payload.U32.Values
-					t.Logf("Membership: %v", membership)
+					t.Logf("Membership (legacy): %v", membership)
 				}
 			case *gepb.ResultChunk_Done:
 				gotDone = true
@@ -286,6 +295,9 @@ func TestIntegrationFullFlow(t *testing.T) {
 		}
 		if len(membership) != 6 {
 			t.Errorf("expected 6 membership values, got %d", len(membership))
+		}
+		if len(nodeIDs) != 6 {
+			t.Errorf("expected 6 node IDs, got %d", len(nodeIDs))
 		}
 
 		// Verify we have exactly 2 components

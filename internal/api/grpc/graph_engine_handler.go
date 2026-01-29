@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -295,6 +296,7 @@ func (h *GraphEngineHandler) PublishBuild(ctx context.Context, req *gepb.Publish
 			// Store result for caching
 			paramsHash := service.HashCommunitiesParams(commConfig.Algorithm.String(), commConfig.Resolution, "")
 			algoResult := service.NewAlgoResult(version.ID, service.AlgoKindCommunities, paramsHash)
+			algoResult.NodeIDsU64 = version.GetAllNodeIDs()
 			algoResult.MembershipU32 = commResult.Membership
 			algoResult.Meta["num_communities"] = fmt.Sprintf("%d", commResult.NumCommunities)
 			algoResult.Meta["modularity"] = fmt.Sprintf("%.6f", commResult.Modularity)
@@ -329,7 +331,9 @@ func (h *GraphEngineHandler) PublishBuild(ctx context.Context, req *gepb.Publish
 			// Store result for caching
 			paramsHash := service.HashParams("kcore", version.ID)
 			algoResult := service.NewAlgoResult(version.ID, service.AlgoKindKCore, paramsHash)
+			algoResult.NodeIDsU64 = version.GetAllNodeIDs()
 			algoResult.CorenessU32 = kcoreResult.Coreness
+			algoResult.MaxCore = kcoreResult.MaxCore
 			algoResult.Meta["max_core"] = fmt.Sprintf("%d", kcoreResult.MaxCore)
 			algoResult.Meta["source"] = "batch_artifact"
 
@@ -484,6 +488,20 @@ func protoMethodToCommunityAlgorithm(m gepb.CommunitiesSpec_Method) service.Comm
 	switch m {
 	case gepb.CommunitiesSpec_LOUVAIN:
 		return service.CommunityAlgorithmLouvain
+	case gepb.CommunitiesSpec_LABEL_PROPAGATION:
+		return service.CommunityAlgorithmLabelPropagation
+	case gepb.CommunitiesSpec_INFOMAP:
+		return service.CommunityAlgorithmInfomap
+	case gepb.CommunitiesSpec_WALKTRAP:
+		return service.CommunityAlgorithmWalktrap
+	case gepb.CommunitiesSpec_FAST_GREEDY:
+		return service.CommunityAlgorithmFastGreedy
+	case gepb.CommunitiesSpec_EDGE_BETWEENNESS:
+		return service.CommunityAlgorithmEdgeBetweenness
+	case gepb.CommunitiesSpec_LEADING_EIGENVECTOR:
+		return service.CommunityAlgorithmLeadingEigenvector
+	case gepb.CommunitiesSpec_SPINGLASS:
+		return service.CommunityAlgorithmSpinglass
 	default:
 		return service.CommunityAlgorithmLeiden
 	}
@@ -1070,10 +1088,14 @@ func (h *GraphEngineHandler) Run(ctx context.Context, req *gepb.RunRequest) (*ge
 			ShimGraph: shimGraph,
 		}
 
-		// Build communities config
+		// Build communities config with algorithm-specific parameters
 		commConfig := &service.CommunitiesConfig{
 			Algorithm:  algorithm,
 			Resolution: resolution,
+			Steps:      commSpec.GetSteps(),  // Walktrap
+			Spins:      commSpec.GetSpins(),  // Spinglass
+			Gamma:      commSpec.GetGamma(),  // Spinglass
+			Trials:     commSpec.GetTrials(), // Infomap
 		}
 
 		// Compute communities
@@ -1096,6 +1118,7 @@ func (h *GraphEngineHandler) Run(ctx context.Context, req *gepb.RunRequest) (*ge
 		result = service.NewAlgoResult(version.ID, service.AlgoKindCommunities, paramsHash)
 		result.AddSpan(cacheSpan)
 		result.AddSpan(computeSpan)
+		result.NodeIDsU64 = version.GetAllNodeIDs()
 		result.MembershipU32 = commResult.Membership
 		result.Meta["source"] = commResult.Meta["source"]
 		result.Meta["algorithm"] = commResult.Meta["algorithm"]
@@ -1298,6 +1321,7 @@ func (h *GraphEngineHandler) Run(ctx context.Context, req *gepb.RunRequest) (*ge
 		result = service.NewAlgoResult(version.ID, service.AlgoKindKCore, paramsHash)
 		result.AddSpan(cacheSpan)
 		result.AddSpan(computeSpan)
+		result.NodeIDsU64 = version.GetAllNodeIDs()
 		result.CorenessU32 = kcoreResult.Coreness
 		result.MaxCore = kcoreResult.MaxCore
 		result.Meta["max_core"] = fmt.Sprintf("%d", kcoreResult.MaxCore)
@@ -1480,19 +1504,24 @@ func (h *GraphEngineHandler) GetResult(req *gepb.GetResultRequest, stream gepb.G
 	// Send data based on algorithm type
 	switch result.AlgoKind {
 	case service.AlgoKindComponents, service.AlgoKindCommunities:
-		// Send membership array
-		if len(result.MembershipU32) > 0 {
-			chunk := &gepb.ResultChunk{
-				Payload: &gepb.ResultChunk_U32{
-					U32: &gepb.U32Buffer{
-						Name:   "membership",
-						Values: result.MembershipU32,
-					},
+		// Send components/communities result with node IDs for proper mapping
+		numComponents := uint32(0)
+		if nc, ok := result.Meta["num_components"]; ok {
+			if n, err := strconv.ParseUint(nc, 10, 32); err == nil {
+				numComponents = uint32(n)
+			}
+		}
+		chunk := &gepb.ResultChunk{
+			Payload: &gepb.ResultChunk_Components{
+				Components: &gepb.ComponentsResult{
+					NodeIdsU64:    result.NodeIDsU64,
+					Membership:    result.MembershipU32,
+					NumComponents: numComponents,
 				},
-			}
-			if err := stream.Send(chunk); err != nil {
-				return status.Errorf(codes.Internal, "failed to send membership: %v", err)
-			}
+			},
+		}
+		if err := stream.Send(chunk); err != nil {
+			return status.Errorf(codes.Internal, "failed to send components: %v", err)
 		}
 
 	case service.AlgoKindShortestPath:
@@ -1612,8 +1641,9 @@ func (h *GraphEngineHandler) GetResult(req *gepb.GetResultRequest, stream gepb.G
 		chunk := &gepb.ResultChunk{
 			Payload: &gepb.ResultChunk_Kcore{
 				Kcore: &gepb.KCoreResult{
-					Coreness: result.CorenessU32,
-					MaxCore:  result.MaxCore,
+					NodeIdsU64: result.NodeIDsU64,
+					Coreness:   result.CorenessU32,
+					MaxCore:    result.MaxCore,
 				},
 			},
 		}

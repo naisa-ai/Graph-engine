@@ -59,7 +59,20 @@ class PathResult:
 
 @dataclass
 class ComponentsResult:
-    """Result of connected components computation."""
+    """Result of connected components or community detection computation.
+    
+    Attributes:
+        node_ids: External node IDs corresponding to each membership value.
+                  node_ids[i] is the external node ID for vertex with internal index i.
+        membership: Component/community ID for each vertex.
+                    membership[i] is the component/community ID for node node_ids[i].
+        num_components: Number of distinct components/communities.
+    
+    To get a dict mapping node_id -> community_id:
+        >>> result = client.communities(graph)
+        >>> community_by_node = dict(zip(result.node_ids, result.membership))
+    """
+    node_ids: List[int] = field(default_factory=list)
     membership: List[int] = field(default_factory=list)
     num_components: int = 0
 
@@ -95,7 +108,20 @@ class CorridorResult:
 
 @dataclass
 class KCoreResult:
-    """Result of k-core decomposition."""
+    """Result of k-core decomposition.
+    
+    Attributes:
+        node_ids: External node IDs corresponding to each coreness value.
+                  node_ids[i] is the external node ID for vertex with internal index i.
+        coreness: Coreness value for each vertex.
+                  coreness[i] is the coreness value for node node_ids[i].
+        max_core: Maximum k found (highest coreness value).
+    
+    To get a dict mapping node_id -> coreness:
+        >>> result = client.k_core(graph)
+        >>> coreness_by_node = dict(zip(result.node_ids, result.coreness))
+    """
+    node_ids: List[int] = field(default_factory=list)
     coreness: List[int] = field(default_factory=list)
     max_core: int = 0
 

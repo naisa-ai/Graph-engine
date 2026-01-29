@@ -355,14 +355,35 @@ message ComponentsSpec {
 }
 
 message CommunitiesSpec {
-  // Canonical placeholder; choose algorithms you support internally.
+  // Community detection algorithms available via igraph.
   enum Method {
-    LEIDEN = 0;
-    LOUVAIN = 1;
+    LEIDEN = 0;              // Recommended: high quality, fast
+    LOUVAIN = 1;             // Fast modularity optimization
+    LABEL_PROPAGATION = 2;   // Very fast, scalable O(m)
+    INFOMAP = 3;             // Information-theoretic method
+    WALKTRAP = 4;            // Random walk based O(mn)
+    FAST_GREEDY = 5;         // Greedy modularity optimization O(n·log²n)
+    EDGE_BETWEENNESS = 6;    // Accurate but slow O(n³)
+    LEADING_EIGENVECTOR = 7; // Newman's spectral method O(n²+m)
+    SPINGLASS = 8;           // Statistical physics approach (connected graphs only)
   }
   Method method = 1;
-  // Optional resolution, iterations, etc.
+
+  // Resolution parameter for Leiden/Louvain (higher = more communities).
+  // Default: 1.0
   double resolution = 2;
+
+  // Walktrap: number of random walk steps (default: 4)
+  uint32 steps = 3;
+
+  // Spinglass: number of spins (default: 25)
+  uint32 spins = 4;
+
+  // Spinglass: gamma parameter (default: 1.0)
+  double gamma = 5;
+
+  // Infomap: number of optimization trials (default: 10)
+  uint32 trials = 6;
 }
 
 message ShortestPathSpec {
@@ -503,6 +524,7 @@ message ResultChunk {
     // New result types
     KCoreResult kcore = 23;
     BetweennessResult betweenness = 24;
+    ComponentsResult components = 25;
 
     // Terminal marker
     bool done = 99;
@@ -555,16 +577,36 @@ message CorridorResult {
 }
 
 message KCoreResult {
-  // Coreness value per vertex (indexed by vertex index).
-  repeated uint32 coreness = 1;
+  // External node IDs corresponding to each coreness value.
+  // node_ids_u64[i] is the external node ID for vertex with internal index i.
+  // Use this to map coreness[i] to its original node.
+  repeated uint64 node_ids_u64 = 1;
+
+  // Coreness value per vertex (parallel array with node_ids_u64).
+  // coreness[i] is the coreness value for the vertex node_ids_u64[i].
+  repeated uint32 coreness = 2;
 
   // Maximum k found (highest coreness value).
-  uint32 max_core = 2;
+  uint32 max_core = 3;
 }
 
 message BetweennessResult {
   // Betweenness centrality score per vertex (indexed by vertex index).
   repeated double scores = 1;
+}
+
+message ComponentsResult {
+  // External node IDs corresponding to each membership value.
+  // node_ids_u64[i] is the external node ID for vertex with internal index i.
+  // Use this to map membership[i] to its original node.
+  repeated uint64 node_ids_u64 = 1;
+
+  // Component/community ID for each vertex (parallel array with node_ids_u64).
+  // membership[i] is the component/community ID for the vertex node_ids_u64[i].
+  repeated uint32 membership = 2;
+
+  // Number of distinct components/communities.
+  uint32 num_components = 3;
 }
 
 // =============================================================================

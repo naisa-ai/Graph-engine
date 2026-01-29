@@ -1357,6 +1357,626 @@ func (g *Graph) CommunitiesLouvainOnView(v *View, resolution float64) (*Communit
 	}, nil
 }
 
+// CommunitiesLabelPropagation detects communities using Label Propagation algorithm.
+// Very fast O(m), but non-deterministic.
+func (g *Graph) CommunitiesLabelPropagation() (*CommunitiesResult, error) {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	if g.closed || g.ptr == nil {
+		return nil, ErrShimClosed
+	}
+
+	var out *C.ge_result_t
+	status := C.ge_run_communities_label_propagation(g.ptr, &out)
+	if status != C.GE_OK {
+		return nil, statusToError(status)
+	}
+
+	result := &Result{ptr: out}
+	defer result.Close()
+
+	membership, err := result.GetU32("membership")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get membership: %w", err)
+	}
+
+	modularity, err := result.GetF64("modularity")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get modularity: %w", err)
+	}
+
+	numCommunities, err := result.GetU32("num_communities")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get num_communities: %w", err)
+	}
+
+	return &CommunitiesResult{
+		Membership:     membership,
+		Modularity:     modularity[0],
+		NumCommunities: numCommunities[0],
+	}, nil
+}
+
+// CommunitiesLabelPropagationOnView detects communities using Label Propagation on a view.
+func (g *Graph) CommunitiesLabelPropagationOnView(v *View) (*CommunitiesResult, error) {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	if g.closed || g.ptr == nil {
+		return nil, ErrShimClosed
+	}
+
+	v.mu.RLock()
+	defer v.mu.RUnlock()
+
+	if v.closed || v.ptr == nil {
+		return nil, ErrShimClosed
+	}
+
+	var out *C.ge_result_t
+	status := C.ge_run_communities_label_propagation_view(g.ptr, v.ptr, &out)
+	if status != C.GE_OK {
+		return nil, statusToError(status)
+	}
+
+	result := &Result{ptr: out}
+	defer result.Close()
+
+	membership, err := result.GetU32("membership")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get membership: %w", err)
+	}
+
+	modularity, err := result.GetF64("modularity")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get modularity: %w", err)
+	}
+
+	numCommunities, err := result.GetU32("num_communities")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get num_communities: %w", err)
+	}
+
+	return &CommunitiesResult{
+		Membership:     membership,
+		Modularity:     modularity[0],
+		NumCommunities: numCommunities[0],
+	}, nil
+}
+
+// CommunitiesInfomap detects communities using Infomap algorithm.
+// Information-theoretic method, good for finding flow-based communities.
+// trials: number of optimization trials (default 10 if 0)
+func (g *Graph) CommunitiesInfomap(trials uint32) (*CommunitiesResult, error) {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	if g.closed || g.ptr == nil {
+		return nil, ErrShimClosed
+	}
+
+	var out *C.ge_result_t
+	status := C.ge_run_communities_infomap(g.ptr, C.uint32_t(trials), &out)
+	if status != C.GE_OK {
+		return nil, statusToError(status)
+	}
+
+	result := &Result{ptr: out}
+	defer result.Close()
+
+	membership, err := result.GetU32("membership")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get membership: %w", err)
+	}
+
+	modularity, err := result.GetF64("modularity")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get modularity: %w", err)
+	}
+
+	numCommunities, err := result.GetU32("num_communities")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get num_communities: %w", err)
+	}
+
+	return &CommunitiesResult{
+		Membership:     membership,
+		Modularity:     modularity[0],
+		NumCommunities: numCommunities[0],
+	}, nil
+}
+
+// CommunitiesInfomapOnView detects communities using Infomap on a view.
+func (g *Graph) CommunitiesInfomapOnView(v *View, trials uint32) (*CommunitiesResult, error) {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	if g.closed || g.ptr == nil {
+		return nil, ErrShimClosed
+	}
+
+	v.mu.RLock()
+	defer v.mu.RUnlock()
+
+	if v.closed || v.ptr == nil {
+		return nil, ErrShimClosed
+	}
+
+	var out *C.ge_result_t
+	status := C.ge_run_communities_infomap_view(g.ptr, v.ptr, C.uint32_t(trials), &out)
+	if status != C.GE_OK {
+		return nil, statusToError(status)
+	}
+
+	result := &Result{ptr: out}
+	defer result.Close()
+
+	membership, err := result.GetU32("membership")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get membership: %w", err)
+	}
+
+	modularity, err := result.GetF64("modularity")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get modularity: %w", err)
+	}
+
+	numCommunities, err := result.GetU32("num_communities")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get num_communities: %w", err)
+	}
+
+	return &CommunitiesResult{
+		Membership:     membership,
+		Modularity:     modularity[0],
+		NumCommunities: numCommunities[0],
+	}, nil
+}
+
+// CommunitiesWalktrap detects communities using Walktrap algorithm.
+// Random walk based, O(mn) complexity.
+// steps: number of random walk steps (default 4 if 0)
+func (g *Graph) CommunitiesWalktrap(steps uint32) (*CommunitiesResult, error) {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	if g.closed || g.ptr == nil {
+		return nil, ErrShimClosed
+	}
+
+	var out *C.ge_result_t
+	status := C.ge_run_communities_walktrap(g.ptr, C.uint32_t(steps), &out)
+	if status != C.GE_OK {
+		return nil, statusToError(status)
+	}
+
+	result := &Result{ptr: out}
+	defer result.Close()
+
+	membership, err := result.GetU32("membership")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get membership: %w", err)
+	}
+
+	modularity, err := result.GetF64("modularity")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get modularity: %w", err)
+	}
+
+	numCommunities, err := result.GetU32("num_communities")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get num_communities: %w", err)
+	}
+
+	return &CommunitiesResult{
+		Membership:     membership,
+		Modularity:     modularity[0],
+		NumCommunities: numCommunities[0],
+	}, nil
+}
+
+// CommunitiesWalktrapOnView detects communities using Walktrap on a view.
+func (g *Graph) CommunitiesWalktrapOnView(v *View, steps uint32) (*CommunitiesResult, error) {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	if g.closed || g.ptr == nil {
+		return nil, ErrShimClosed
+	}
+
+	v.mu.RLock()
+	defer v.mu.RUnlock()
+
+	if v.closed || v.ptr == nil {
+		return nil, ErrShimClosed
+	}
+
+	var out *C.ge_result_t
+	status := C.ge_run_communities_walktrap_view(g.ptr, v.ptr, C.uint32_t(steps), &out)
+	if status != C.GE_OK {
+		return nil, statusToError(status)
+	}
+
+	result := &Result{ptr: out}
+	defer result.Close()
+
+	membership, err := result.GetU32("membership")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get membership: %w", err)
+	}
+
+	modularity, err := result.GetF64("modularity")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get modularity: %w", err)
+	}
+
+	numCommunities, err := result.GetU32("num_communities")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get num_communities: %w", err)
+	}
+
+	return &CommunitiesResult{
+		Membership:     membership,
+		Modularity:     modularity[0],
+		NumCommunities: numCommunities[0],
+	}, nil
+}
+
+// CommunitiesFastGreedy detects communities using Fast Greedy algorithm.
+// Greedy modularity optimization, O(n·log²n) complexity.
+func (g *Graph) CommunitiesFastGreedy() (*CommunitiesResult, error) {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	if g.closed || g.ptr == nil {
+		return nil, ErrShimClosed
+	}
+
+	var out *C.ge_result_t
+	status := C.ge_run_communities_fast_greedy(g.ptr, &out)
+	if status != C.GE_OK {
+		return nil, statusToError(status)
+	}
+
+	result := &Result{ptr: out}
+	defer result.Close()
+
+	membership, err := result.GetU32("membership")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get membership: %w", err)
+	}
+
+	modularity, err := result.GetF64("modularity")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get modularity: %w", err)
+	}
+
+	numCommunities, err := result.GetU32("num_communities")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get num_communities: %w", err)
+	}
+
+	return &CommunitiesResult{
+		Membership:     membership,
+		Modularity:     modularity[0],
+		NumCommunities: numCommunities[0],
+	}, nil
+}
+
+// CommunitiesFastGreedyOnView detects communities using Fast Greedy on a view.
+func (g *Graph) CommunitiesFastGreedyOnView(v *View) (*CommunitiesResult, error) {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	if g.closed || g.ptr == nil {
+		return nil, ErrShimClosed
+	}
+
+	v.mu.RLock()
+	defer v.mu.RUnlock()
+
+	if v.closed || v.ptr == nil {
+		return nil, ErrShimClosed
+	}
+
+	var out *C.ge_result_t
+	status := C.ge_run_communities_fast_greedy_view(g.ptr, v.ptr, &out)
+	if status != C.GE_OK {
+		return nil, statusToError(status)
+	}
+
+	result := &Result{ptr: out}
+	defer result.Close()
+
+	membership, err := result.GetU32("membership")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get membership: %w", err)
+	}
+
+	modularity, err := result.GetF64("modularity")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get modularity: %w", err)
+	}
+
+	numCommunities, err := result.GetU32("num_communities")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get num_communities: %w", err)
+	}
+
+	return &CommunitiesResult{
+		Membership:     membership,
+		Modularity:     modularity[0],
+		NumCommunities: numCommunities[0],
+	}, nil
+}
+
+// CommunitiesEdgeBetweenness detects communities using Edge Betweenness algorithm.
+// Accurate but slow O(n³), not recommended for large graphs.
+func (g *Graph) CommunitiesEdgeBetweenness() (*CommunitiesResult, error) {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	if g.closed || g.ptr == nil {
+		return nil, ErrShimClosed
+	}
+
+	var out *C.ge_result_t
+	status := C.ge_run_communities_edge_betweenness(g.ptr, &out)
+	if status != C.GE_OK {
+		return nil, statusToError(status)
+	}
+
+	result := &Result{ptr: out}
+	defer result.Close()
+
+	membership, err := result.GetU32("membership")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get membership: %w", err)
+	}
+
+	modularity, err := result.GetF64("modularity")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get modularity: %w", err)
+	}
+
+	numCommunities, err := result.GetU32("num_communities")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get num_communities: %w", err)
+	}
+
+	return &CommunitiesResult{
+		Membership:     membership,
+		Modularity:     modularity[0],
+		NumCommunities: numCommunities[0],
+	}, nil
+}
+
+// CommunitiesEdgeBetweennessOnView detects communities using Edge Betweenness on a view.
+func (g *Graph) CommunitiesEdgeBetweennessOnView(v *View) (*CommunitiesResult, error) {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	if g.closed || g.ptr == nil {
+		return nil, ErrShimClosed
+	}
+
+	v.mu.RLock()
+	defer v.mu.RUnlock()
+
+	if v.closed || v.ptr == nil {
+		return nil, ErrShimClosed
+	}
+
+	var out *C.ge_result_t
+	status := C.ge_run_communities_edge_betweenness_view(g.ptr, v.ptr, &out)
+	if status != C.GE_OK {
+		return nil, statusToError(status)
+	}
+
+	result := &Result{ptr: out}
+	defer result.Close()
+
+	membership, err := result.GetU32("membership")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get membership: %w", err)
+	}
+
+	modularity, err := result.GetF64("modularity")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get modularity: %w", err)
+	}
+
+	numCommunities, err := result.GetU32("num_communities")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get num_communities: %w", err)
+	}
+
+	return &CommunitiesResult{
+		Membership:     membership,
+		Modularity:     modularity[0],
+		NumCommunities: numCommunities[0],
+	}, nil
+}
+
+// CommunitiesLeadingEigenvector detects communities using Leading Eigenvector algorithm.
+// Newman's spectral method, O(n²+m) complexity.
+func (g *Graph) CommunitiesLeadingEigenvector() (*CommunitiesResult, error) {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	if g.closed || g.ptr == nil {
+		return nil, ErrShimClosed
+	}
+
+	var out *C.ge_result_t
+	status := C.ge_run_communities_leading_eigenvector(g.ptr, &out)
+	if status != C.GE_OK {
+		return nil, statusToError(status)
+	}
+
+	result := &Result{ptr: out}
+	defer result.Close()
+
+	membership, err := result.GetU32("membership")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get membership: %w", err)
+	}
+
+	modularity, err := result.GetF64("modularity")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get modularity: %w", err)
+	}
+
+	numCommunities, err := result.GetU32("num_communities")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get num_communities: %w", err)
+	}
+
+	return &CommunitiesResult{
+		Membership:     membership,
+		Modularity:     modularity[0],
+		NumCommunities: numCommunities[0],
+	}, nil
+}
+
+// CommunitiesLeadingEigenvectorOnView detects communities using Leading Eigenvector on a view.
+func (g *Graph) CommunitiesLeadingEigenvectorOnView(v *View) (*CommunitiesResult, error) {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	if g.closed || g.ptr == nil {
+		return nil, ErrShimClosed
+	}
+
+	v.mu.RLock()
+	defer v.mu.RUnlock()
+
+	if v.closed || v.ptr == nil {
+		return nil, ErrShimClosed
+	}
+
+	var out *C.ge_result_t
+	status := C.ge_run_communities_leading_eigenvector_view(g.ptr, v.ptr, &out)
+	if status != C.GE_OK {
+		return nil, statusToError(status)
+	}
+
+	result := &Result{ptr: out}
+	defer result.Close()
+
+	membership, err := result.GetU32("membership")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get membership: %w", err)
+	}
+
+	modularity, err := result.GetF64("modularity")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get modularity: %w", err)
+	}
+
+	numCommunities, err := result.GetU32("num_communities")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get num_communities: %w", err)
+	}
+
+	return &CommunitiesResult{
+		Membership:     membership,
+		Modularity:     modularity[0],
+		NumCommunities: numCommunities[0],
+	}, nil
+}
+
+// CommunitiesSpinglass detects communities using Spinglass algorithm.
+// Statistical physics approach. Only works on connected graphs.
+// spins: number of spins (default 25 if 0)
+// gamma: resolution parameter (default 1.0 if <= 0)
+func (g *Graph) CommunitiesSpinglass(spins uint32, gamma float64) (*CommunitiesResult, error) {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	if g.closed || g.ptr == nil {
+		return nil, ErrShimClosed
+	}
+
+	var out *C.ge_result_t
+	status := C.ge_run_communities_spinglass(g.ptr, C.uint32_t(spins), C.double(gamma), &out)
+	if status != C.GE_OK {
+		return nil, statusToError(status)
+	}
+
+	result := &Result{ptr: out}
+	defer result.Close()
+
+	membership, err := result.GetU32("membership")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get membership: %w", err)
+	}
+
+	modularity, err := result.GetF64("modularity")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get modularity: %w", err)
+	}
+
+	numCommunities, err := result.GetU32("num_communities")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get num_communities: %w", err)
+	}
+
+	return &CommunitiesResult{
+		Membership:     membership,
+		Modularity:     modularity[0],
+		NumCommunities: numCommunities[0],
+	}, nil
+}
+
+// CommunitiesSpinglassOnView detects communities using Spinglass on a view.
+func (g *Graph) CommunitiesSpinglassOnView(v *View, spins uint32, gamma float64) (*CommunitiesResult, error) {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	if g.closed || g.ptr == nil {
+		return nil, ErrShimClosed
+	}
+
+	v.mu.RLock()
+	defer v.mu.RUnlock()
+
+	if v.closed || v.ptr == nil {
+		return nil, ErrShimClosed
+	}
+
+	var out *C.ge_result_t
+	status := C.ge_run_communities_spinglass_view(g.ptr, v.ptr, C.uint32_t(spins), C.double(gamma), &out)
+	if status != C.GE_OK {
+		return nil, statusToError(status)
+	}
+
+	result := &Result{ptr: out}
+	defer result.Close()
+
+	membership, err := result.GetU32("membership")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get membership: %w", err)
+	}
+
+	modularity, err := result.GetF64("modularity")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get modularity: %w", err)
+	}
+
+	numCommunities, err := result.GetU32("num_communities")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get num_communities: %w", err)
+	}
+
+	return &CommunitiesResult{
+		Membership:     membership,
+		Modularity:     modularity[0],
+		NumCommunities: numCommunities[0],
+	}, nil
+}
+
 // -----------------------------------------------------------------------------
 // Algorithm: K-Core Decomposition
 // -----------------------------------------------------------------------------

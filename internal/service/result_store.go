@@ -88,6 +88,7 @@ type AlgoResult struct {
 	KSPPaths []*KSPPath // For k_shortest_paths
 
 	// K-Core results
+	NodeIDsU64  []uint64 // External node IDs (parallel with CorenessU32)
 	CorenessU32 []uint32 // Coreness value per vertex
 	MaxCore     uint32   // Maximum k found
 
@@ -198,6 +199,7 @@ func (r *AlgoResult) EstimateMemory() uint64 {
 	}
 
 	// K-Core data
+	total += uint64(len(r.NodeIDsU64)) * 8
 	total += uint64(len(r.CorenessU32)) * 4
 
 	// Betweenness data

@@ -43,6 +43,7 @@ func computeComponentsShim(version *GraphVersion, g *shim.Graph, weak bool) (*Al
 	}
 	paramsHash := HashParams(mode, version.ID)
 	result := NewAlgoResult(version.ID, AlgoKindComponents, paramsHash)
+	result.NodeIDsU64 = version.GetAllNodeIDs()
 	result.MembershipU32 = shimResult.Membership
 	result.Meta["mode"] = mode
 	result.Meta["num_components"] = strconv.FormatUint(uint64(shimResult.NumComponents), 10)

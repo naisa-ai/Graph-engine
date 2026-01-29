@@ -369,6 +369,7 @@ func testGetResult(ctx context.Context, client gepb.GraphEngineClient, _ gepb.Gr
 	}
 
 	var membership []uint32
+	var nodeIDs []uint64
 	var gotHeader, gotDone bool
 
 	for {
@@ -384,7 +385,14 @@ func testGetResult(ctx context.Context, client gepb.GraphEngineClient, _ gepb.Gr
 		case *gepb.ResultChunk_Header:
 			gotHeader = true
 			log.Printf("  Result header: type=%s", payload.Header.Type)
+		case *gepb.ResultChunk_Components:
+			// New ComponentsResult format with node_ids and membership
+			nodeIDs = payload.Components.NodeIdsU64
+			membership = payload.Components.Membership
+			log.Printf("  Components result: %d node_ids, %d membership values, num_components=%d",
+				len(nodeIDs), len(membership), payload.Components.NumComponents)
 		case *gepb.ResultChunk_U32:
+			// Legacy U32 buffer format (fallback)
 			if payload.U32.Name == "membership" {
 				membership = payload.U32.Values
 			}
@@ -401,6 +409,9 @@ func testGetResult(ctx context.Context, client gepb.GraphEngineClient, _ gepb.Gr
 	}
 	if len(membership) != 10 {
 		return fmt.Errorf("expected 10 membership values, got %d", len(membership))
+	}
+	if len(nodeIDs) != 10 {
+		return fmt.Errorf("expected 10 node IDs, got %d", len(nodeIDs))
 	}
 
 	// Count unique components

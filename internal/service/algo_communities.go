@@ -18,6 +18,34 @@ const (
 	// CommunityAlgorithmLouvain uses the Louvain algorithm.
 	// Faster than Leiden but may produce lower quality communities.
 	CommunityAlgorithmLouvain
+
+	// CommunityAlgorithmLabelPropagation uses the Label Propagation algorithm.
+	// Very fast O(m), but non-deterministic.
+	CommunityAlgorithmLabelPropagation
+
+	// CommunityAlgorithmInfomap uses the Infomap algorithm.
+	// Information-theoretic method, good for finding flow-based communities.
+	CommunityAlgorithmInfomap
+
+	// CommunityAlgorithmWalktrap uses the Walktrap algorithm.
+	// Random walk based, O(mn) complexity.
+	CommunityAlgorithmWalktrap
+
+	// CommunityAlgorithmFastGreedy uses the Fast Greedy algorithm.
+	// Greedy modularity optimization, O(n·log²n) complexity.
+	CommunityAlgorithmFastGreedy
+
+	// CommunityAlgorithmEdgeBetweenness uses the Edge Betweenness algorithm.
+	// Accurate but slow O(n³), not recommended for large graphs.
+	CommunityAlgorithmEdgeBetweenness
+
+	// CommunityAlgorithmLeadingEigenvector uses the Leading Eigenvector algorithm.
+	// Newman's spectral method, O(n²+m) complexity.
+	CommunityAlgorithmLeadingEigenvector
+
+	// CommunityAlgorithmSpinglass uses the Spinglass algorithm.
+	// Statistical physics approach. Only works on connected graphs.
+	CommunityAlgorithmSpinglass
 )
 
 func (a CommunityAlgorithm) String() string {
@@ -26,6 +54,20 @@ func (a CommunityAlgorithm) String() string {
 		return "leiden"
 	case CommunityAlgorithmLouvain:
 		return "louvain"
+	case CommunityAlgorithmLabelPropagation:
+		return "label_propagation"
+	case CommunityAlgorithmInfomap:
+		return "infomap"
+	case CommunityAlgorithmWalktrap:
+		return "walktrap"
+	case CommunityAlgorithmFastGreedy:
+		return "fast_greedy"
+	case CommunityAlgorithmEdgeBetweenness:
+		return "edge_betweenness"
+	case CommunityAlgorithmLeadingEigenvector:
+		return "leading_eigenvector"
+	case CommunityAlgorithmSpinglass:
+		return "spinglass"
 	default:
 		return "unknown"
 	}
@@ -52,13 +94,29 @@ type CommunitiesResult struct {
 
 // CommunitiesConfig contains configuration for community detection.
 type CommunitiesConfig struct {
-	// Algorithm specifies which algorithm to use (Leiden or Louvain).
+	// Algorithm specifies which algorithm to use.
 	Algorithm CommunityAlgorithm
 
-	// Resolution controls community granularity.
+	// Resolution controls community granularity (for Leiden/Louvain).
 	// Higher values produce more, smaller communities.
 	// Default: 1.0
 	Resolution float64
+
+	// Steps is the number of random walk steps for Walktrap.
+	// Default: 4
+	Steps uint32
+
+	// Spins is the number of spins for Spinglass.
+	// Default: 25
+	Spins uint32
+
+	// Gamma is the resolution parameter for Spinglass.
+	// Default: 1.0
+	Gamma float64
+
+	// Trials is the number of optimization trials for Infomap.
+	// Default: 10
+	Trials uint32
 }
 
 // CommunitiesShimConfig holds shim configuration for community detection.
@@ -154,6 +212,20 @@ func computeCommunitiesShim(
 			shimResult, err = shimCfg.ShimGraph.CommunitiesLeidenOnView(shimCfg.ShimView, config.Resolution)
 		case CommunityAlgorithmLouvain:
 			shimResult, err = shimCfg.ShimGraph.CommunitiesLouvainOnView(shimCfg.ShimView, config.Resolution)
+		case CommunityAlgorithmLabelPropagation:
+			shimResult, err = shimCfg.ShimGraph.CommunitiesLabelPropagationOnView(shimCfg.ShimView)
+		case CommunityAlgorithmInfomap:
+			shimResult, err = shimCfg.ShimGraph.CommunitiesInfomapOnView(shimCfg.ShimView, config.Trials)
+		case CommunityAlgorithmWalktrap:
+			shimResult, err = shimCfg.ShimGraph.CommunitiesWalktrapOnView(shimCfg.ShimView, config.Steps)
+		case CommunityAlgorithmFastGreedy:
+			shimResult, err = shimCfg.ShimGraph.CommunitiesFastGreedyOnView(shimCfg.ShimView)
+		case CommunityAlgorithmEdgeBetweenness:
+			shimResult, err = shimCfg.ShimGraph.CommunitiesEdgeBetweennessOnView(shimCfg.ShimView)
+		case CommunityAlgorithmLeadingEigenvector:
+			shimResult, err = shimCfg.ShimGraph.CommunitiesLeadingEigenvectorOnView(shimCfg.ShimView)
+		case CommunityAlgorithmSpinglass:
+			shimResult, err = shimCfg.ShimGraph.CommunitiesSpinglassOnView(shimCfg.ShimView, config.Spins, config.Gamma)
 		default:
 			return nil, fmt.Errorf("unknown community algorithm: %d", config.Algorithm)
 		}
@@ -164,6 +236,20 @@ func computeCommunitiesShim(
 			shimResult, err = shimCfg.ShimGraph.CommunitiesLeiden(config.Resolution)
 		case CommunityAlgorithmLouvain:
 			shimResult, err = shimCfg.ShimGraph.CommunitiesLouvain(config.Resolution)
+		case CommunityAlgorithmLabelPropagation:
+			shimResult, err = shimCfg.ShimGraph.CommunitiesLabelPropagation()
+		case CommunityAlgorithmInfomap:
+			shimResult, err = shimCfg.ShimGraph.CommunitiesInfomap(config.Trials)
+		case CommunityAlgorithmWalktrap:
+			shimResult, err = shimCfg.ShimGraph.CommunitiesWalktrap(config.Steps)
+		case CommunityAlgorithmFastGreedy:
+			shimResult, err = shimCfg.ShimGraph.CommunitiesFastGreedy()
+		case CommunityAlgorithmEdgeBetweenness:
+			shimResult, err = shimCfg.ShimGraph.CommunitiesEdgeBetweenness()
+		case CommunityAlgorithmLeadingEigenvector:
+			shimResult, err = shimCfg.ShimGraph.CommunitiesLeadingEigenvector()
+		case CommunityAlgorithmSpinglass:
+			shimResult, err = shimCfg.ShimGraph.CommunitiesSpinglass(config.Spins, config.Gamma)
 		default:
 			return nil, fmt.Errorf("unknown community algorithm: %d", config.Algorithm)
 		}
@@ -295,10 +381,11 @@ func (r *CommunitiesResult) AreInSameCommunity(vertexIdx1, vertexIdx2 uint32) bo
 // ValidateCommunitiesRequest validates a communities request.
 func ValidateCommunitiesRequest(algorithm string, resolution float64) error {
 	switch algorithm {
-	case "leiden", "louvain", "":
+	case "leiden", "louvain", "label_propagation", "infomap", "walktrap",
+		"fast_greedy", "edge_betweenness", "leading_eigenvector", "spinglass", "":
 		// valid
 	default:
-		return fmt.Errorf("unknown algorithm: %s (expected 'leiden' or 'louvain')", algorithm)
+		return fmt.Errorf("unknown algorithm: %s (expected one of: leiden, louvain, label_propagation, infomap, walktrap, fast_greedy, edge_betweenness, leading_eigenvector, spinglass)", algorithm)
 	}
 
 	if resolution < 0 {
@@ -315,6 +402,20 @@ func ParseCommunityAlgorithm(s string) (CommunityAlgorithm, error) {
 		return CommunityAlgorithmLeiden, nil
 	case "louvain":
 		return CommunityAlgorithmLouvain, nil
+	case "label_propagation":
+		return CommunityAlgorithmLabelPropagation, nil
+	case "infomap":
+		return CommunityAlgorithmInfomap, nil
+	case "walktrap":
+		return CommunityAlgorithmWalktrap, nil
+	case "fast_greedy":
+		return CommunityAlgorithmFastGreedy, nil
+	case "edge_betweenness":
+		return CommunityAlgorithmEdgeBetweenness, nil
+	case "leading_eigenvector":
+		return CommunityAlgorithmLeadingEigenvector, nil
+	case "spinglass":
+		return CommunityAlgorithmSpinglass, nil
 	default:
 		return 0, fmt.Errorf("unknown algorithm: %s", s)
 	}

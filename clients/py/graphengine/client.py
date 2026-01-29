@@ -555,9 +555,15 @@ class GraphEngineClient:
         """Collect components result from chunks."""
         comp_result = ComponentsResult()
         for chunk in self._get_result_chunks(result):
-            if chunk.HasField("header"):
+            if chunk.HasField("components"):
+                cr = chunk.components
+                comp_result.node_ids = list(cr.node_ids_u64)
+                comp_result.membership = list(cr.membership)
+                comp_result.num_components = cr.num_components
+            # Fallback for legacy u32 buffer format (pre node_ids)
+            elif chunk.HasField("header"):
                 comp_result.num_components = int(chunk.header.meta.get("num_components", "0"))
-            if chunk.HasField("u32"):
+            elif chunk.HasField("u32"):
                 comp_result.membership.extend(chunk.u32.values)
         return comp_result
 
@@ -788,25 +794,55 @@ class GraphEngineClient:
         graph: GraphRef,
         method: str = "louvain",
         resolution: float = 1.0,
+        steps: int = 0,
+        spins: int = 0,
+        gamma: float = 0.0,
+        trials: int = 0,
     ) -> ComponentsResult:
         """Detect communities.
         
         Args:
             graph: Reference to the graph
-            method: "louvain" or "leiden"
-            resolution: Resolution parameter
+            method: Community detection algorithm. Options:
+                - "leiden" (recommended): High quality, fast
+                - "louvain": Fast modularity optimization
+                - "label_propagation": Very fast O(m), non-deterministic
+                - "infomap": Information-theoretic method
+                - "walktrap": Random walk based O(mn)
+                - "fast_greedy": Greedy modularity optimization O(n·log²n)
+                - "edge_betweenness": Accurate but slow O(n³)
+                - "leading_eigenvector": Newman's spectral method O(n²+m)
+                - "spinglass": Statistical physics (connected graphs only)
+            resolution: Resolution parameter for Leiden/Louvain (higher = more communities)
+            steps: Number of random walk steps for Walktrap (default: 4)
+            spins: Number of spins for Spinglass (default: 25)
+            gamma: Gamma parameter for Spinglass (default: 1.0)
+            trials: Number of trials for Infomap (default: 10)
             
         Returns:
             Components result with community membership
         """
-        method_enum = (
-            gepb.CommunitiesSpec.LOUVAIN if method == "louvain"
-            else gepb.CommunitiesSpec.LEIDEN
-        )
+        method_map = {
+            "leiden": gepb.CommunitiesSpec.LEIDEN,
+            "louvain": gepb.CommunitiesSpec.LOUVAIN,
+            "label_propagation": gepb.CommunitiesSpec.LABEL_PROPAGATION,
+            "infomap": gepb.CommunitiesSpec.INFOMAP,
+            "walktrap": gepb.CommunitiesSpec.WALKTRAP,
+            "fast_greedy": gepb.CommunitiesSpec.FAST_GREEDY,
+            "edge_betweenness": gepb.CommunitiesSpec.EDGE_BETWEENNESS,
+            "leading_eigenvector": gepb.CommunitiesSpec.LEADING_EIGENVECTOR,
+            "spinglass": gepb.CommunitiesSpec.SPINGLASS,
+        }
+        method_enum = method_map.get(method, gepb.CommunitiesSpec.LEIDEN)
+        
         algo = gepb.AlgoSpec(
             communities=gepb.CommunitiesSpec(
                 method=method_enum,
                 resolution=resolution,
+                steps=steps,
+                spins=spins,
+                gamma=gamma,
+                trials=trials,
             )
         )
         job = self._run(graph, None, algo)
@@ -840,6 +876,7 @@ class GraphEngineClient:
         for chunk in self._get_result_chunks(result):
             if chunk.HasField("kcore"):
                 kc = chunk.kcore
+                kcore_result.node_ids = list(kc.node_ids_u64)
                 kcore_result.coreness = list(kc.coreness)
                 kcore_result.max_core = kc.max_core
         return kcore_result

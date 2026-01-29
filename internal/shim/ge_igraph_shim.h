@@ -49,6 +49,14 @@ typedef enum {
     GE_ALGO_COMMUNITIES_LEIDEN = 7,
     GE_ALGO_COMMUNITIES_LOUVAIN = 8,
     GE_ALGO_NEIGHBORHOOD = 9,
+    // Additional community detection algorithms
+    GE_ALGO_COMMUNITIES_LABEL_PROP = 10,
+    GE_ALGO_COMMUNITIES_INFOMAP = 11,
+    GE_ALGO_COMMUNITIES_WALKTRAP = 12,
+    GE_ALGO_COMMUNITIES_FAST_GREEDY = 13,
+    GE_ALGO_COMMUNITIES_EDGE_BETWEENNESS = 14,
+    GE_ALGO_COMMUNITIES_LEADING_EIGENVECTOR = 15,
+    GE_ALGO_COMMUNITIES_SPINGLASS = 16,
 } ge_algo_kind_t;
 
 // -----------------------------------------------------------------------------
@@ -331,6 +339,116 @@ ge_status_t ge_run_communities_louvain_view(
     const ge_graph_t* g,
     const ge_view_t* v,
     double resolution,
+    ge_result_t** out
+);
+
+// Detect communities using Label Propagation algorithm.
+// Very fast O(m), but non-deterministic.
+ge_status_t ge_run_communities_label_propagation(
+    const ge_graph_t* g,
+    ge_result_t** out
+);
+
+// Label propagation on a view.
+ge_status_t ge_run_communities_label_propagation_view(
+    const ge_graph_t* g,
+    const ge_view_t* v,
+    ge_result_t** out
+);
+
+// Detect communities using Infomap algorithm.
+// Information-theoretic method, good for finding flow-based communities.
+// trials: number of optimization trials (default 10)
+ge_status_t ge_run_communities_infomap(
+    const ge_graph_t* g,
+    uint32_t trials,
+    ge_result_t** out
+);
+
+// Infomap on a view.
+ge_status_t ge_run_communities_infomap_view(
+    const ge_graph_t* g,
+    const ge_view_t* v,
+    uint32_t trials,
+    ge_result_t** out
+);
+
+// Detect communities using Walktrap algorithm.
+// Random walk based, O(mn) complexity.
+// steps: number of random walk steps (default 4)
+ge_status_t ge_run_communities_walktrap(
+    const ge_graph_t* g,
+    uint32_t steps,
+    ge_result_t** out
+);
+
+// Walktrap on a view.
+ge_status_t ge_run_communities_walktrap_view(
+    const ge_graph_t* g,
+    const ge_view_t* v,
+    uint32_t steps,
+    ge_result_t** out
+);
+
+// Detect communities using Fast Greedy algorithm.
+// Greedy modularity optimization, O(n·log²n) complexity.
+ge_status_t ge_run_communities_fast_greedy(
+    const ge_graph_t* g,
+    ge_result_t** out
+);
+
+// Fast greedy on a view.
+ge_status_t ge_run_communities_fast_greedy_view(
+    const ge_graph_t* g,
+    const ge_view_t* v,
+    ge_result_t** out
+);
+
+// Detect communities using Edge Betweenness algorithm.
+// Accurate but slow O(n³), not recommended for large graphs.
+ge_status_t ge_run_communities_edge_betweenness(
+    const ge_graph_t* g,
+    ge_result_t** out
+);
+
+// Edge betweenness on a view.
+ge_status_t ge_run_communities_edge_betweenness_view(
+    const ge_graph_t* g,
+    const ge_view_t* v,
+    ge_result_t** out
+);
+
+// Detect communities using Leading Eigenvector algorithm.
+// Newman's spectral method, O(n²+m) complexity.
+ge_status_t ge_run_communities_leading_eigenvector(
+    const ge_graph_t* g,
+    ge_result_t** out
+);
+
+// Leading eigenvector on a view.
+ge_status_t ge_run_communities_leading_eigenvector_view(
+    const ge_graph_t* g,
+    const ge_view_t* v,
+    ge_result_t** out
+);
+
+// Detect communities using Spinglass algorithm.
+// Statistical physics approach. Only works on connected graphs.
+// spins: number of spins (default 25)
+// gamma: resolution parameter (default 1.0)
+ge_status_t ge_run_communities_spinglass(
+    const ge_graph_t* g,
+    uint32_t spins,
+    double gamma,
+    ge_result_t** out
+);
+
+// Spinglass on a view.
+ge_status_t ge_run_communities_spinglass_view(
+    const ge_graph_t* g,
+    const ge_view_t* v,
+    uint32_t spins,
+    double gamma,
     ge_result_t** out
 );
 

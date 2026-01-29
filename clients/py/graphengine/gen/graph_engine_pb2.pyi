@@ -412,18 +412,40 @@ class ComponentsSpec(_message.Message):
     def __init__(self, mode: _Optional[_Union[ComponentsSpec.Mode, str]] = ...) -> None: ...
 
 class CommunitiesSpec(_message.Message):
-    __slots__ = ("method", "resolution")
+    __slots__ = ("method", "resolution", "steps", "spins", "gamma", "trials")
     class Method(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
         __slots__ = ()
         LEIDEN: _ClassVar[CommunitiesSpec.Method]
         LOUVAIN: _ClassVar[CommunitiesSpec.Method]
+        LABEL_PROPAGATION: _ClassVar[CommunitiesSpec.Method]
+        INFOMAP: _ClassVar[CommunitiesSpec.Method]
+        WALKTRAP: _ClassVar[CommunitiesSpec.Method]
+        FAST_GREEDY: _ClassVar[CommunitiesSpec.Method]
+        EDGE_BETWEENNESS: _ClassVar[CommunitiesSpec.Method]
+        LEADING_EIGENVECTOR: _ClassVar[CommunitiesSpec.Method]
+        SPINGLASS: _ClassVar[CommunitiesSpec.Method]
     LEIDEN: CommunitiesSpec.Method
     LOUVAIN: CommunitiesSpec.Method
+    LABEL_PROPAGATION: CommunitiesSpec.Method
+    INFOMAP: CommunitiesSpec.Method
+    WALKTRAP: CommunitiesSpec.Method
+    FAST_GREEDY: CommunitiesSpec.Method
+    EDGE_BETWEENNESS: CommunitiesSpec.Method
+    LEADING_EIGENVECTOR: CommunitiesSpec.Method
+    SPINGLASS: CommunitiesSpec.Method
     METHOD_FIELD_NUMBER: _ClassVar[int]
     RESOLUTION_FIELD_NUMBER: _ClassVar[int]
+    STEPS_FIELD_NUMBER: _ClassVar[int]
+    SPINS_FIELD_NUMBER: _ClassVar[int]
+    GAMMA_FIELD_NUMBER: _ClassVar[int]
+    TRIALS_FIELD_NUMBER: _ClassVar[int]
     method: CommunitiesSpec.Method
     resolution: float
-    def __init__(self, method: _Optional[_Union[CommunitiesSpec.Method, str]] = ..., resolution: _Optional[float] = ...) -> None: ...
+    steps: int
+    spins: int
+    gamma: float
+    trials: int
+    def __init__(self, method: _Optional[_Union[CommunitiesSpec.Method, str]] = ..., resolution: _Optional[float] = ..., steps: _Optional[int] = ..., spins: _Optional[int] = ..., gamma: _Optional[float] = ..., trials: _Optional[int] = ...) -> None: ...
 
 class ShortestPathSpec(_message.Message):
     __slots__ = ("source_u64", "target_u64", "weight_column", "return_edges", "return_vertices")
@@ -586,7 +608,7 @@ class GetResultRequest(_message.Message):
     def __init__(self, result: _Optional[_Union[ResultRef, _Mapping]] = ...) -> None: ...
 
 class ResultChunk(_message.Message):
-    __slots__ = ("header", "u32", "u64", "f64", "bytes", "shortest_path", "st_mincut", "corridor", "kcore", "betweenness", "done")
+    __slots__ = ("header", "u32", "u64", "f64", "bytes", "shortest_path", "st_mincut", "corridor", "kcore", "betweenness", "components", "done")
     HEADER_FIELD_NUMBER: _ClassVar[int]
     U32_FIELD_NUMBER: _ClassVar[int]
     U64_FIELD_NUMBER: _ClassVar[int]
@@ -597,6 +619,7 @@ class ResultChunk(_message.Message):
     CORRIDOR_FIELD_NUMBER: _ClassVar[int]
     KCORE_FIELD_NUMBER: _ClassVar[int]
     BETWEENNESS_FIELD_NUMBER: _ClassVar[int]
+    COMPONENTS_FIELD_NUMBER: _ClassVar[int]
     DONE_FIELD_NUMBER: _ClassVar[int]
     header: ResultHeader
     u32: U32Buffer
@@ -608,8 +631,9 @@ class ResultChunk(_message.Message):
     corridor: CorridorResult
     kcore: KCoreResult
     betweenness: BetweennessResult
+    components: ComponentsResult
     done: bool
-    def __init__(self, header: _Optional[_Union[ResultHeader, _Mapping]] = ..., u32: _Optional[_Union[U32Buffer, _Mapping]] = ..., u64: _Optional[_Union[U64Buffer, _Mapping]] = ..., f64: _Optional[_Union[F64Buffer, _Mapping]] = ..., bytes: _Optional[_Union[BytesBuffer, _Mapping]] = ..., shortest_path: _Optional[_Union[ShortestPathResult, _Mapping]] = ..., st_mincut: _Optional[_Union[STMinCutResult, _Mapping]] = ..., corridor: _Optional[_Union[CorridorResult, _Mapping]] = ..., kcore: _Optional[_Union[KCoreResult, _Mapping]] = ..., betweenness: _Optional[_Union[BetweennessResult, _Mapping]] = ..., done: bool = ...) -> None: ...
+    def __init__(self, header: _Optional[_Union[ResultHeader, _Mapping]] = ..., u32: _Optional[_Union[U32Buffer, _Mapping]] = ..., u64: _Optional[_Union[U64Buffer, _Mapping]] = ..., f64: _Optional[_Union[F64Buffer, _Mapping]] = ..., bytes: _Optional[_Union[BytesBuffer, _Mapping]] = ..., shortest_path: _Optional[_Union[ShortestPathResult, _Mapping]] = ..., st_mincut: _Optional[_Union[STMinCutResult, _Mapping]] = ..., corridor: _Optional[_Union[CorridorResult, _Mapping]] = ..., kcore: _Optional[_Union[KCoreResult, _Mapping]] = ..., betweenness: _Optional[_Union[BetweennessResult, _Mapping]] = ..., components: _Optional[_Union[ComponentsResult, _Mapping]] = ..., done: bool = ...) -> None: ...
 
 class ResultHeader(_message.Message):
     __slots__ = ("result_id", "type", "vcount", "ecount", "meta")
@@ -700,18 +724,30 @@ class CorridorResult(_message.Message):
     def __init__(self, view: _Optional[_Union[ViewRef, _Mapping]] = ..., meta: _Optional[_Mapping[str, str]] = ...) -> None: ...
 
 class KCoreResult(_message.Message):
-    __slots__ = ("coreness", "max_core")
+    __slots__ = ("node_ids_u64", "coreness", "max_core")
+    NODE_IDS_U64_FIELD_NUMBER: _ClassVar[int]
     CORENESS_FIELD_NUMBER: _ClassVar[int]
     MAX_CORE_FIELD_NUMBER: _ClassVar[int]
+    node_ids_u64: _containers.RepeatedScalarFieldContainer[int]
     coreness: _containers.RepeatedScalarFieldContainer[int]
     max_core: int
-    def __init__(self, coreness: _Optional[_Iterable[int]] = ..., max_core: _Optional[int] = ...) -> None: ...
+    def __init__(self, node_ids_u64: _Optional[_Iterable[int]] = ..., coreness: _Optional[_Iterable[int]] = ..., max_core: _Optional[int] = ...) -> None: ...
 
 class BetweennessResult(_message.Message):
     __slots__ = ("scores",)
     SCORES_FIELD_NUMBER: _ClassVar[int]
     scores: _containers.RepeatedScalarFieldContainer[float]
     def __init__(self, scores: _Optional[_Iterable[float]] = ...) -> None: ...
+
+class ComponentsResult(_message.Message):
+    __slots__ = ("node_ids_u64", "membership", "num_components")
+    NODE_IDS_U64_FIELD_NUMBER: _ClassVar[int]
+    MEMBERSHIP_FIELD_NUMBER: _ClassVar[int]
+    NUM_COMPONENTS_FIELD_NUMBER: _ClassVar[int]
+    node_ids_u64: _containers.RepeatedScalarFieldContainer[int]
+    membership: _containers.RepeatedScalarFieldContainer[int]
+    num_components: int
+    def __init__(self, node_ids_u64: _Optional[_Iterable[int]] = ..., membership: _Optional[_Iterable[int]] = ..., num_components: _Optional[int] = ...) -> None: ...
 
 class ReleaseRequest(_message.Message):
     __slots__ = ("view", "result")
