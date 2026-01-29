@@ -3,7 +3,7 @@
 import grpc
 import warnings
 
-from graphengine.gen import graph_engine_pb2 as graphengine_dot_v1_dot_graph__engine__pb2
+from . import graph_engine_pb2 as graphengine_dot_v1_dot_graph__engine__pb2
 
 GRPC_GENERATED_VERSION = '1.76.0'
 GRPC_VERSION = grpc.__version__
@@ -39,47 +39,47 @@ class GraphEngineStub(object):
             channel: A grpc.Channel.
         """
         self.BeginBuild = channel.unary_unary(
-                '/graphengine.gen.GraphEngine/BeginBuild',
+                '/graphengine.v1.GraphEngine/BeginBuild',
                 request_serializer=graphengine_dot_v1_dot_graph__engine__pb2.BeginBuildRequest.SerializeToString,
                 response_deserializer=graphengine_dot_v1_dot_graph__engine__pb2.BeginBuildResponse.FromString,
                 _registered_method=True)
         self.Upload = channel.stream_unary(
-                '/graphengine.gen.GraphEngine/Upload',
+                '/graphengine.v1.GraphEngine/Upload',
                 request_serializer=graphengine_dot_v1_dot_graph__engine__pb2.UploadRequest.SerializeToString,
                 response_deserializer=graphengine_dot_v1_dot_graph__engine__pb2.UploadResponse.FromString,
                 _registered_method=True)
         self.PublishBuild = channel.unary_unary(
-                '/graphengine.gen.GraphEngine/PublishBuild',
+                '/graphengine.v1.GraphEngine/PublishBuild',
                 request_serializer=graphengine_dot_v1_dot_graph__engine__pb2.PublishBuildRequest.SerializeToString,
                 response_deserializer=graphengine_dot_v1_dot_graph__engine__pb2.PublishBuildResponse.FromString,
                 _registered_method=True)
         self.CreateView = channel.unary_unary(
-                '/graphengine.gen.GraphEngine/CreateView',
+                '/graphengine.v1.GraphEngine/CreateView',
                 request_serializer=graphengine_dot_v1_dot_graph__engine__pb2.CreateViewRequest.SerializeToString,
                 response_deserializer=graphengine_dot_v1_dot_graph__engine__pb2.CreateViewResponse.FromString,
                 _registered_method=True)
         self.Run = channel.unary_unary(
-                '/graphengine.gen.GraphEngine/Run',
+                '/graphengine.v1.GraphEngine/Run',
                 request_serializer=graphengine_dot_v1_dot_graph__engine__pb2.RunRequest.SerializeToString,
                 response_deserializer=graphengine_dot_v1_dot_graph__engine__pb2.RunResponse.FromString,
                 _registered_method=True)
         self.GetJob = channel.unary_unary(
-                '/graphengine.gen.GraphEngine/GetJob',
+                '/graphengine.v1.GraphEngine/GetJob',
                 request_serializer=graphengine_dot_v1_dot_graph__engine__pb2.GetJobRequest.SerializeToString,
                 response_deserializer=graphengine_dot_v1_dot_graph__engine__pb2.GetJobResponse.FromString,
                 _registered_method=True)
         self.CancelJob = channel.unary_unary(
-                '/graphengine.gen.GraphEngine/CancelJob',
+                '/graphengine.v1.GraphEngine/CancelJob',
                 request_serializer=graphengine_dot_v1_dot_graph__engine__pb2.CancelJobRequest.SerializeToString,
                 response_deserializer=graphengine_dot_v1_dot_graph__engine__pb2.CancelJobResponse.FromString,
                 _registered_method=True)
         self.GetResult = channel.unary_stream(
-                '/graphengine.gen.GraphEngine/GetResult',
+                '/graphengine.v1.GraphEngine/GetResult',
                 request_serializer=graphengine_dot_v1_dot_graph__engine__pb2.GetResultRequest.SerializeToString,
                 response_deserializer=graphengine_dot_v1_dot_graph__engine__pb2.ResultChunk.FromString,
                 _registered_method=True)
         self.Release = channel.unary_unary(
-                '/graphengine.gen.GraphEngine/Release',
+                '/graphengine.v1.GraphEngine/Release',
                 request_serializer=graphengine_dot_v1_dot_graph__engine__pb2.ReleaseRequest.SerializeToString,
                 response_deserializer=graphengine_dot_v1_dot_graph__engine__pb2.ReleaseResponse.FromString,
                 _registered_method=True)
@@ -206,9 +206,9 @@ def add_GraphEngineServicer_to_server(servicer, server):
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
-            'graphengine.gen.GraphEngine', rpc_method_handlers)
+            'graphengine.v1.GraphEngine', rpc_method_handlers)
     server.add_generic_rpc_handlers((generic_handler,))
-    server.add_registered_method_handlers('graphengine.gen.GraphEngine', rpc_method_handlers)
+    server.add_registered_method_handlers('graphengine.v1.GraphEngine', rpc_method_handlers)
 
 
  # This class is part of an EXPERIMENTAL API.
@@ -233,7 +233,7 @@ class GraphEngine(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/graphengine.gen.GraphEngine/BeginBuild',
+            '/graphengine.v1.GraphEngine/BeginBuild',
             graphengine_dot_v1_dot_graph__engine__pb2.BeginBuildRequest.SerializeToString,
             graphengine_dot_v1_dot_graph__engine__pb2.BeginBuildResponse.FromString,
             options,
@@ -260,7 +260,7 @@ class GraphEngine(object):
         return grpc.experimental.stream_unary(
             request_iterator,
             target,
-            '/graphengine.gen.GraphEngine/Upload',
+            '/graphengine.v1.GraphEngine/Upload',
             graphengine_dot_v1_dot_graph__engine__pb2.UploadRequest.SerializeToString,
             graphengine_dot_v1_dot_graph__engine__pb2.UploadResponse.FromString,
             options,
@@ -287,7 +287,7 @@ class GraphEngine(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/graphengine.gen.GraphEngine/PublishBuild',
+            '/graphengine.v1.GraphEngine/PublishBuild',
             graphengine_dot_v1_dot_graph__engine__pb2.PublishBuildRequest.SerializeToString,
             graphengine_dot_v1_dot_graph__engine__pb2.PublishBuildResponse.FromString,
             options,
@@ -314,7 +314,7 @@ class GraphEngine(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/graphengine.gen.GraphEngine/CreateView',
+            '/graphengine.v1.GraphEngine/CreateView',
             graphengine_dot_v1_dot_graph__engine__pb2.CreateViewRequest.SerializeToString,
             graphengine_dot_v1_dot_graph__engine__pb2.CreateViewResponse.FromString,
             options,
@@ -341,7 +341,7 @@ class GraphEngine(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/graphengine.gen.GraphEngine/Run',
+            '/graphengine.v1.GraphEngine/Run',
             graphengine_dot_v1_dot_graph__engine__pb2.RunRequest.SerializeToString,
             graphengine_dot_v1_dot_graph__engine__pb2.RunResponse.FromString,
             options,
@@ -368,7 +368,7 @@ class GraphEngine(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/graphengine.gen.GraphEngine/GetJob',
+            '/graphengine.v1.GraphEngine/GetJob',
             graphengine_dot_v1_dot_graph__engine__pb2.GetJobRequest.SerializeToString,
             graphengine_dot_v1_dot_graph__engine__pb2.GetJobResponse.FromString,
             options,
@@ -395,7 +395,7 @@ class GraphEngine(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/graphengine.gen.GraphEngine/CancelJob',
+            '/graphengine.v1.GraphEngine/CancelJob',
             graphengine_dot_v1_dot_graph__engine__pb2.CancelJobRequest.SerializeToString,
             graphengine_dot_v1_dot_graph__engine__pb2.CancelJobResponse.FromString,
             options,
@@ -422,7 +422,7 @@ class GraphEngine(object):
         return grpc.experimental.unary_stream(
             request,
             target,
-            '/graphengine.gen.GraphEngine/GetResult',
+            '/graphengine.v1.GraphEngine/GetResult',
             graphengine_dot_v1_dot_graph__engine__pb2.GetResultRequest.SerializeToString,
             graphengine_dot_v1_dot_graph__engine__pb2.ResultChunk.FromString,
             options,
@@ -449,7 +449,7 @@ class GraphEngine(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/graphengine.gen.GraphEngine/Release',
+            '/graphengine.v1.GraphEngine/Release',
             graphengine_dot_v1_dot_graph__engine__pb2.ReleaseRequest.SerializeToString,
             graphengine_dot_v1_dot_graph__engine__pb2.ReleaseResponse.FromString,
             options,

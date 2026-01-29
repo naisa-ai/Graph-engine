@@ -12,9 +12,10 @@ FROM python:3.11-slim
 WORKDIR /app
 
 # Install all Python dependencies
+# Note: protobuf version must match the version used to generate the pb2 files (6.31.x)
 RUN pip install --no-cache-dir \
     grpcio>=1.60.0 \
-    protobuf>=4.0.0 \
+    "protobuf>=6.31.0" \
     grpcio-tools
 
 # Create directories for the client library

@@ -1374,110 +1374,93 @@ ge_status_t ge_run_neighborhood(
         return GE_ERR_INVALID_ARG;
     }
     
-    // Use igraph's neighborhood function
-    igraph_vs_t vids;
-    igraph_vector_int_t seed_vec;
+    // Use BFS to compute exact distances from seeds
+    // This is more efficient and accurate than using igraph_neighborhood + igraph_distances
     
-    igraph_error_t err = igraph_vector_int_init(&seed_vec, (igraph_integer_t)n_seeds);
-    if (err != IGRAPH_SUCCESS) {
-        set_error("igraph error: %d", err);
-        return GE_ERR_IGRAPH;
-    }
-    
-    for (size_t i = 0; i < n_seeds; i++) {
-        VECTOR(seed_vec)[i] = (igraph_integer_t)seeds[i];
-    }
-    
-    err = igraph_vs_vector(&vids, &seed_vec);
-    if (err != IGRAPH_SUCCESS) {
-        igraph_vector_int_destroy(&seed_vec);
-        set_error("igraph error: %d", err);
-        return GE_ERR_IGRAPH;
-    }
-    
-    igraph_vector_int_list_t neighborhoods;
-    err = igraph_vector_int_list_init(&neighborhoods, 0);
-    if (err != IGRAPH_SUCCESS) {
-        igraph_vs_destroy(&vids);
-        igraph_vector_int_destroy(&seed_vec);
-        set_error("igraph error: %d", err);
-        return GE_ERR_IGRAPH;
-    }
-    
-    err = igraph_neighborhood(
-        &g->g,
-        &neighborhoods,
-        vids,
-        (igraph_integer_t)hops,
-        mode_to_igraph(mode),
-        0  // mindist
-    );
-    
-    igraph_vs_destroy(&vids);
-    igraph_vector_int_destroy(&seed_vec);
-    
-    if (err != IGRAPH_SUCCESS) {
-        igraph_vector_int_list_destroy(&neighborhoods);
-        set_error("igraph error computing neighborhood: %d", err);
-        return GE_ERR_IGRAPH;
-    }
-    
-    // Merge all neighborhoods and track distances
-    // Use a simple approach: union of all neighborhoods
-    // Distance = minimum distance from any seed (approximation)
-    
-    // First, count unique vertices
-    uint8_t* seen = (uint8_t*)calloc(g->n_vertices, sizeof(uint8_t));
     uint32_t* min_dist = (uint32_t*)malloc(g->n_vertices * sizeof(uint32_t));
-    if (!seen || !min_dist) {
-        free(seen);
-        free(min_dist);
-        igraph_vector_int_list_destroy(&neighborhoods);
+    if (!min_dist) {
         set_error("out of memory");
         return GE_ERR_OUT_OF_MEMORY;
     }
     
+    // Initialize all distances to UINT32_MAX (unreachable)
     for (uint32_t i = 0; i < g->n_vertices; i++) {
         min_dist[i] = UINT32_MAX;
     }
     
-    // Mark seeds as distance 0
+    // BFS queue - simple array-based queue
+    uint32_t* queue = (uint32_t*)malloc(g->n_vertices * sizeof(uint32_t));
+    if (!queue) {
+        free(min_dist);
+        set_error("out of memory");
+        return GE_ERR_OUT_OF_MEMORY;
+    }
+    
+    size_t queue_head = 0;
+    size_t queue_tail = 0;
+    
+    // Initialize seeds at distance 0
     for (size_t i = 0; i < n_seeds; i++) {
-        if (seeds[i] < g->n_vertices) {
-            seen[seeds[i]] = 1;
+        if (seeds[i] < g->n_vertices && min_dist[seeds[i]] == UINT32_MAX) {
             min_dist[seeds[i]] = 0;
+            queue[queue_tail++] = seeds[i];
         }
     }
     
-    // Process neighborhoods (each seed's neighborhood at distance 1..hops)
-    igraph_integer_t n_neighborhoods = igraph_vector_int_list_size(&neighborhoods);
-    for (igraph_integer_t s = 0; s < n_neighborhoods; s++) {
-        igraph_vector_int_t* nbrs = igraph_vector_int_list_get_ptr(&neighborhoods, s);
-        igraph_integer_t nbr_size = igraph_vector_int_size(nbrs);
+    // BFS traversal
+    igraph_vector_int_t neighbors;
+    igraph_error_t err = igraph_vector_int_init(&neighbors, 0);
+    if (err != IGRAPH_SUCCESS) {
+        free(min_dist);
+        free(queue);
+        set_error("igraph error: %d", err);
+        return GE_ERR_IGRAPH;
+    }
+    
+    while (queue_head < queue_tail) {
+        uint32_t v = queue[queue_head++];
+        uint32_t v_dist = min_dist[v];
         
-        for (igraph_integer_t j = 0; j < nbr_size; j++) {
-            igraph_integer_t v = VECTOR(*nbrs)[j];
-            if (v >= 0 && v < (igraph_integer_t)g->n_vertices) {
-                seen[v] = 1;
-                // Approximate distance as 1 (would need BFS for exact)
-                if (min_dist[v] > 1) {
-                    min_dist[v] = 1;
+        // Stop if we've reached the hop limit
+        if (v_dist >= hops) {
+            continue;
+        }
+        
+        // Get neighbors of v
+        err = igraph_neighbors(&g->g, &neighbors, (igraph_integer_t)v, mode_to_igraph(mode));
+        if (err != IGRAPH_SUCCESS) {
+            igraph_vector_int_destroy(&neighbors);
+            free(min_dist);
+            free(queue);
+            set_error("igraph error getting neighbors: %d", err);
+            return GE_ERR_IGRAPH;
+        }
+        
+        igraph_integer_t n_neighbors = igraph_vector_int_size(&neighbors);
+        for (igraph_integer_t i = 0; i < n_neighbors; i++) {
+            igraph_integer_t u = VECTOR(neighbors)[i];
+            if (u >= 0 && u < (igraph_integer_t)g->n_vertices) {
+                if (min_dist[u] == UINT32_MAX) {
+                    min_dist[u] = v_dist + 1;
+                    queue[queue_tail++] = (uint32_t)u;
                 }
             }
         }
     }
     
-    igraph_vector_int_list_destroy(&neighborhoods);
+    igraph_vector_int_destroy(&neighbors);
+    free(queue);
     
-    // Count and collect results
+    // Count vertices in neighborhood (distance <= hops)
     size_t count = 0;
     for (uint32_t i = 0; i < g->n_vertices; i++) {
-        if (seen[i]) count++;
+        if (min_dist[i] <= hops) {
+            count++;
+        }
     }
     
     ge_result_t* r = create_result();
     if (!r) {
-        free(seen);
         free(min_dist);
         set_error("out of memory");
         return GE_ERR_OUT_OF_MEMORY;
@@ -1488,7 +1471,6 @@ ge_status_t ge_run_neighborhood(
     if ((!vertices || !distances) && count > 0) {
         free(vertices);
         free(distances);
-        free(seen);
         free(min_dist);
         ge_result_destroy(r);
         set_error("out of memory");
@@ -1497,14 +1479,13 @@ ge_status_t ge_run_neighborhood(
     
     size_t idx = 0;
     for (uint32_t i = 0; i < g->n_vertices && idx < count; i++) {
-        if (seen[i]) {
+        if (min_dist[i] <= hops) {
             vertices[idx] = i;
             distances[idx] = min_dist[i];
             idx++;
         }
     }
     
-    free(seen);
     free(min_dist);
     
     ge_status_t status = add_buffer_u32(r, "vertices", vertices, count);

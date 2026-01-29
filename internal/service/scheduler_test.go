@@ -67,13 +67,14 @@ func TestScheduler_ParallelLimit(t *testing.T) {
 
 	var maxConcurrent int32
 	var currentConcurrent int32
-	var wg sync.WaitGroup
+	var completed int32
+	doneCh := make(chan struct{})
+
+	const numJobs = 5
 
 	// Submit 5 jobs that track concurrency
-	for i := 0; i < 5; i++ {
-		wg.Add(1)
+	for i := 0; i < numJobs; i++ {
 		job := NewJob("tenant1", AlgoKindShortestPath, 0, func(ctx context.Context) (*AlgoResult, error) {
-			defer wg.Done()
 			current := atomic.AddInt32(&currentConcurrent, 1)
 
 			// Track max concurrent
@@ -86,6 +87,10 @@ func TestScheduler_ParallelLimit(t *testing.T) {
 
 			time.Sleep(50 * time.Millisecond)
 			atomic.AddInt32(&currentConcurrent, -1)
+
+			if atomic.AddInt32(&completed, 1) == numJobs {
+				close(doneCh)
+			}
 			return &AlgoResult{ID: "result"}, nil
 		})
 
@@ -94,8 +99,13 @@ func TestScheduler_ParallelLimit(t *testing.T) {
 		}
 	}
 
-	// Wait for all jobs
-	wg.Wait()
+	// Wait for all jobs with timeout
+	select {
+	case <-doneCh:
+		// All jobs completed
+	case <-time.After(10 * time.Second):
+		t.Fatalf("timeout waiting for jobs, only %d of %d completed", atomic.LoadInt32(&completed), numJobs)
+	}
 
 	// Verify max concurrent was respected
 	if maxConcurrent > int32(config.MaxParallelJobs) {
@@ -114,16 +124,25 @@ func TestScheduler_QueueFull(t *testing.T) {
 	scheduler := NewScheduler(config, logger)
 	defer scheduler.Shutdown(context.Background())
 
-	// Block the scheduler with a long job
+	// Block the scheduler with a job that signals when it starts
 	blockCh := make(chan struct{})
+	startedCh := make(chan struct{})
 	blockJob := NewJob("tenant1", AlgoKindShortestPath, 0, func(ctx context.Context) (*AlgoResult, error) {
+		close(startedCh)
 		<-blockCh
 		return &AlgoResult{ID: "block"}, nil
 	})
-	scheduler.Submit(blockJob)
+	if err := scheduler.Submit(blockJob); err != nil {
+		t.Fatalf("failed to submit blocking job: %v", err)
+	}
 
-	// Wait for blockJob to start
-	time.Sleep(50 * time.Millisecond)
+	// Wait for blockJob to actually start
+	select {
+	case <-startedCh:
+		// Blocking job is running
+	case <-time.After(5 * time.Second):
+		t.Fatal("blocking job did not start in time")
+	}
 
 	// Fill the queue
 	for i := 0; i < config.MaxQueueSize; i++ {
@@ -159,40 +178,68 @@ func TestScheduler_Priority(t *testing.T) {
 	scheduler := NewScheduler(config, logger)
 	defer scheduler.Shutdown(context.Background())
 
-	// Block the scheduler
+	// Block the scheduler with a job that signals when it starts
 	blockCh := make(chan struct{})
+	startedCh := make(chan struct{})
 	blockJob := NewJob("tenant1", AlgoKindShortestPath, 0, func(ctx context.Context) (*AlgoResult, error) {
+		close(startedCh) // Signal that blocking job has started
 		<-blockCh
 		return &AlgoResult{ID: "block"}, nil
 	})
-	scheduler.Submit(blockJob)
-	time.Sleep(50 * time.Millisecond)
+	if err := scheduler.Submit(blockJob); err != nil {
+		t.Fatalf("failed to submit blocking job: %v", err)
+	}
+
+	// Wait for blocking job to actually start (with timeout)
+	select {
+	case <-startedCh:
+		// Blocking job is running
+	case <-time.After(5 * time.Second):
+		t.Fatal("blocking job did not start in time")
+	}
 
 	// Submit jobs with different priorities
 	var executionOrder []int
 	var orderMu sync.Mutex
-	var wg sync.WaitGroup
+	doneCh := make(chan struct{})
 
 	jobs := make([]*Job, 3)
+	var submitted int
 	for i := 0; i < 3; i++ {
 		priority := int32(i) // 0, 1, 2 (higher is more urgent)
 		idx := i
-		wg.Add(1)
 		jobs[i] = NewJob("tenant1", AlgoKindShortestPath, priority, func(ctx context.Context) (*AlgoResult, error) {
-			defer wg.Done()
 			orderMu.Lock()
 			executionOrder = append(executionOrder, idx)
+			if len(executionOrder) == 3 {
+				close(doneCh)
+			}
 			orderMu.Unlock()
 			return &AlgoResult{}, nil
 		})
-		scheduler.Submit(jobs[i])
+		if err := scheduler.Submit(jobs[i]); err != nil {
+			t.Logf("failed to submit job %d: %v", i, err)
+		} else {
+			submitted++
+		}
+	}
+
+	if submitted != 3 {
+		t.Fatalf("only %d of 3 jobs submitted successfully", submitted)
 	}
 
 	// Unblock and let jobs run
 	close(blockCh)
 
-	// Wait for all jobs to complete
-	wg.Wait()
+	// Wait for all jobs to complete (with timeout)
+	select {
+	case <-doneCh:
+		// All jobs completed
+	case <-time.After(10 * time.Second):
+		orderMu.Lock()
+		t.Fatalf("timeout waiting for jobs, only %d completed", len(executionOrder))
+		orderMu.Unlock()
+	}
 
 	// Higher priority should run first
 	orderMu.Lock()
@@ -219,29 +266,45 @@ func TestScheduler_CancelJob(t *testing.T) {
 	scheduler := NewScheduler(config, logger)
 	defer scheduler.Shutdown(context.Background())
 
-	// Create a job that waits for context cancellation
+	// Create a job that signals when it starts and waits for context cancellation
+	startedCh := make(chan struct{})
 	job := NewJob("tenant1", AlgoKindShortestPath, 0, func(ctx context.Context) (*AlgoResult, error) {
+		close(startedCh)
 		<-ctx.Done()
 		return nil, ctx.Err()
 	})
 
-	scheduler.Submit(job)
-	time.Sleep(50 * time.Millisecond)
+	if err := scheduler.Submit(job); err != nil {
+		t.Fatalf("failed to submit job: %v", err)
+	}
+
+	// Wait for job to actually start
+	select {
+	case <-startedCh:
+		// Job is running
+	case <-time.After(5 * time.Second):
+		t.Fatal("job did not start in time")
+	}
 
 	// Cancel the job
 	scheduler.CancelJob(job.ID)
 
-	// Wait a bit
-	time.Sleep(100 * time.Millisecond)
+	// Wait for job state to change (with timeout)
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		job.mu.Lock()
+		state := job.State
+		job.mu.Unlock()
+		if state == JobStateCanceled || state == JobStateFailed {
+			return // Test passed
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 
-	// Read state under lock to avoid race condition
 	job.mu.Lock()
 	state := job.State
 	job.mu.Unlock()
-
-	if state != JobStateCanceled && state != JobStateFailed {
-		t.Errorf("expected job state CANCELED or FAILED, got %s", state.String())
-	}
+	t.Errorf("expected job state CANCELED or FAILED, got %s", state.String())
 }
 
 func TestScheduler_TenantJobCount(t *testing.T) {
@@ -255,32 +318,46 @@ func TestScheduler_TenantJobCount(t *testing.T) {
 	scheduler := NewScheduler(config, logger)
 	defer scheduler.Shutdown(context.Background())
 
-	// Create jobs for two tenants
+	// Create jobs for two tenants with explicit start signaling
 	blockCh := make(chan struct{})
-	var wg sync.WaitGroup
+	var startedCount int32
+	const totalJobs = 5
+
+	allStartedCh := make(chan struct{})
 
 	for i := 0; i < 3; i++ {
-		wg.Add(1)
 		job := NewJob("tenant1", AlgoKindShortestPath, 0, func(ctx context.Context) (*AlgoResult, error) {
-			defer wg.Done()
+			if atomic.AddInt32(&startedCount, 1) == totalJobs {
+				close(allStartedCh)
+			}
 			<-blockCh
 			return &AlgoResult{}, nil
 		})
-		scheduler.Submit(job)
+		if err := scheduler.Submit(job); err != nil {
+			t.Fatalf("failed to submit tenant1 job: %v", err)
+		}
 	}
 
 	for i := 0; i < 2; i++ {
-		wg.Add(1)
 		job := NewJob("tenant2", AlgoKindShortestPath, 0, func(ctx context.Context) (*AlgoResult, error) {
-			defer wg.Done()
+			if atomic.AddInt32(&startedCount, 1) == totalJobs {
+				close(allStartedCh)
+			}
 			<-blockCh
 			return &AlgoResult{}, nil
 		})
-		scheduler.Submit(job)
+		if err := scheduler.Submit(job); err != nil {
+			t.Fatalf("failed to submit tenant2 job: %v", err)
+		}
 	}
 
-	// Wait for jobs to start
-	time.Sleep(100 * time.Millisecond)
+	// Wait for all jobs to start
+	select {
+	case <-allStartedCh:
+		// All jobs started
+	case <-time.After(5 * time.Second):
+		t.Fatalf("jobs did not start in time, only %d of %d started", atomic.LoadInt32(&startedCount), totalJobs)
+	}
 
 	// Check tenant counts
 	tenant1Count := scheduler.TenantJobCount("tenant1")
@@ -293,9 +370,8 @@ func TestScheduler_TenantJobCount(t *testing.T) {
 		t.Errorf("expected tenant2 count 2, got %d", tenant2Count)
 	}
 
-	// Unblock and cleanup
+	// Unblock jobs
 	close(blockCh)
-	wg.Wait()
 }
 
 func TestScheduler_RunSync(t *testing.T) {

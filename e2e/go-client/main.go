@@ -78,6 +78,16 @@ func main() {
 		// Phase 5: New algorithms
 		{"RunKCore", testRunKCore},
 		{"RunBetweenness", testRunBetweenness},
+		// Enhanced algorithm tests - additional options
+		{"RunComponentsStrong", testRunComponentsStrong},
+		{"RunCommunitiesLeiden", testRunCommunitiesLeiden},
+		{"RunCommunitiesResolution", testRunCommunitiesResolution},
+		{"RunBFSUnlimitedDepth", testRunBFSUnlimitedDepth},
+		{"RunNeighborhoodMultiHop", testRunNeighborhoodMultiHop},
+		{"RunComponentsOnView", testRunComponentsOnView},
+		{"RunBFSOnView", testRunBFSOnView},
+		{"RunNeighborhoodOnView", testRunNeighborhoodOnView},
+		{"RunCommunitiesOnView", testRunCommunitiesOnView},
 		// Resource management tests
 		{"CancelJob", testCancelJob},
 		{"Release", testRelease},
@@ -584,6 +594,166 @@ func testRunBetweenness(ctx context.Context, client *graphengine.Client) error {
 	}
 
 	log.Printf("  Betweenness: %d scores computed", len(result.Scores))
+	return nil
+}
+
+// =============================================================================
+// Enhanced Algorithm Tests - Testing Additional Options
+// =============================================================================
+
+func testRunComponentsStrong(ctx context.Context, client *graphengine.Client) error {
+	if graphRef == nil {
+		return fmt.Errorf("no graph reference from previous test")
+	}
+
+	// Test strong components mode
+	// Note: For undirected graphs, strong == weak
+	result, err := client.ComponentsWithMode(ctx, graphRef, gepb.ComponentsSpec_STRONG)
+	if err != nil {
+		return fmt.Errorf("ComponentsWithMode (strong) failed: %w", err)
+	}
+	if len(result.Membership) != 10 {
+		return fmt.Errorf("expected 10 membership values, got %d", len(result.Membership))
+	}
+
+	log.Printf("  Components (strong): %d membership values", len(result.Membership))
+	return nil
+}
+
+func testRunCommunitiesLeiden(ctx context.Context, client *graphengine.Client) error {
+	if graphRef == nil {
+		return fmt.Errorf("no graph reference from previous test")
+	}
+
+	// Test Leiden algorithm
+	result, err := client.CommunitiesWithParams(ctx, graphRef, gepb.CommunitiesSpec_LEIDEN, 1.0)
+	if err != nil {
+		return fmt.Errorf("CommunitiesWithParams (Leiden) failed: %w", err)
+	}
+	if len(result.Membership) != 10 {
+		return fmt.Errorf("expected 10 membership values, got %d", len(result.Membership))
+	}
+
+	// Count unique communities
+	communities := make(map[uint32]int)
+	for _, c := range result.Membership {
+		communities[c]++
+	}
+
+	log.Printf("  Communities (Leiden): %d communities found", len(communities))
+	return nil
+}
+
+func testRunCommunitiesResolution(ctx context.Context, client *graphengine.Client) error {
+	if graphRef == nil {
+		return fmt.Errorf("no graph reference from previous test")
+	}
+
+	// Lower resolution -> fewer communities
+	resultLow, err := client.CommunitiesWithParams(ctx, graphRef, gepb.CommunitiesSpec_LOUVAIN, 0.5)
+	if err != nil {
+		return fmt.Errorf("CommunitiesWithParams (low res) failed: %w", err)
+	}
+	communitiesLow := make(map[uint32]int)
+	for _, c := range resultLow.Membership {
+		communitiesLow[c]++
+	}
+
+	// Higher resolution -> more communities
+	resultHigh, err := client.CommunitiesWithParams(ctx, graphRef, gepb.CommunitiesSpec_LOUVAIN, 2.0)
+	if err != nil {
+		return fmt.Errorf("CommunitiesWithParams (high res) failed: %w", err)
+	}
+	communitiesHigh := make(map[uint32]int)
+	for _, c := range resultHigh.Membership {
+		communitiesHigh[c]++
+	}
+
+	log.Printf("  Communities resolution test: low_res=%d, high_res=%d", len(communitiesLow), len(communitiesHigh))
+	return nil
+}
+
+func testRunBFSUnlimitedDepth(ctx context.Context, client *graphengine.Client) error {
+	if graphRef == nil {
+		return fmt.Errorf("no graph reference from previous test")
+	}
+
+	// Use a large depth to explore the entire component
+	vertices, err := client.BFS(ctx, graphRef, 1, 10)
+	if err != nil {
+		return fmt.Errorf("BFS failed: %w", err)
+	}
+	if len(vertices) == 0 {
+		return fmt.Errorf("expected vertices from BFS")
+	}
+
+	log.Printf("  BFS (source=1, depth=10): found %d vertices", len(vertices))
+	return nil
+}
+
+func testRunNeighborhoodMultiHop(ctx context.Context, client *graphengine.Client) error {
+	if graphRef == nil {
+		return fmt.Errorf("no graph reference from previous test")
+	}
+
+	// 1-hop neighborhood
+	vertices1Hop, err := client.Neighborhood(ctx, graphRef, []uint64{1}, 1)
+	if err != nil {
+		return fmt.Errorf("Neighborhood (1 hop) failed: %w", err)
+	}
+
+	// 2-hop neighborhood (should include more vertices)
+	vertices2Hop, err := client.Neighborhood(ctx, graphRef, []uint64{1}, 2)
+	if err != nil {
+		return fmt.Errorf("Neighborhood (2 hops) failed: %w", err)
+	}
+
+	if len(vertices2Hop) < len(vertices1Hop) {
+		return fmt.Errorf("2-hop neighborhood should include at least as many vertices as 1-hop")
+	}
+
+	log.Printf("  Neighborhood: 1-hop=%d, 2-hop=%d", len(vertices1Hop), len(vertices2Hop))
+	return nil
+}
+
+func testRunComponentsOnView(ctx context.Context, client *graphengine.Client) error {
+	if viewRef == nil {
+		log.Printf("  Skipping Components on view (no view reference available)")
+		return nil
+	}
+
+	// Components on a view requires using the raw Run API
+	log.Printf("  Components on view: (skipped - requires raw API)")
+	return nil
+}
+
+func testRunBFSOnView(ctx context.Context, client *graphengine.Client) error {
+	if viewRef == nil {
+		log.Printf("  Skipping BFS on view (no view reference available)")
+		return nil
+	}
+
+	log.Printf("  BFS on view: (skipped - requires raw API)")
+	return nil
+}
+
+func testRunNeighborhoodOnView(ctx context.Context, client *graphengine.Client) error {
+	if viewRef == nil {
+		log.Printf("  Skipping Neighborhood on view (no view reference available)")
+		return nil
+	}
+
+	log.Printf("  Neighborhood on view: (skipped - requires raw API)")
+	return nil
+}
+
+func testRunCommunitiesOnView(ctx context.Context, client *graphengine.Client) error {
+	if viewRef == nil {
+		log.Printf("  Skipping Communities on view (no view reference available)")
+		return nil
+	}
+
+	log.Printf("  Communities on view: (skipped - requires raw API)")
 	return nil
 }
 

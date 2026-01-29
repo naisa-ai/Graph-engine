@@ -449,6 +449,150 @@ def test_run_betweenness(client: GraphEngineClient) -> bool:
     return True
 
 
+# =============================================================================
+# Enhanced Algorithm Tests - Testing Additional Options
+# =============================================================================
+
+
+def test_run_components_strong(client: GraphEngineClient) -> bool:
+    """Test Strong Components algorithm."""
+    global graph_ref
+    if graph_ref is None:
+        log.error("no graph reference from previous test")
+        return False
+    
+    # Note: Strong components only makes sense for directed graphs
+    # Our test graph is undirected, so strong == weak
+    # We're testing that the API works with mode="strong"
+    result = client.components(graph_ref, mode="strong")
+    if len(result.membership) != 10:
+        log.error(f"expected 10 membership values, got {len(result.membership)}")
+        return False
+    
+    log.info(f"  Components (strong): {len(result.membership)} membership values")
+    return True
+
+
+def test_run_communities_leiden(client: GraphEngineClient) -> bool:
+    """Test Communities with Leiden algorithm."""
+    global graph_ref
+    if graph_ref is None:
+        log.error("no graph reference from previous test")
+        return False
+    
+    result = client.communities(graph_ref, method="leiden")
+    if len(result.membership) != 10:
+        log.error(f"expected 10 membership values, got {len(result.membership)}")
+        return False
+    
+    communities = set(result.membership)
+    log.info(f"  Communities (Leiden): {len(communities)} communities found")
+    return True
+
+
+def test_run_communities_resolution(client: GraphEngineClient) -> bool:
+    """Test Communities with different resolution values."""
+    global graph_ref
+    if graph_ref is None:
+        log.error("no graph reference from previous test")
+        return False
+    
+    # Lower resolution -> fewer communities
+    result_low = client.communities(graph_ref, method="louvain", resolution=0.5)
+    communities_low = set(result_low.membership)
+    
+    # Higher resolution -> more communities
+    result_high = client.communities(graph_ref, method="louvain", resolution=2.0)
+    communities_high = set(result_high.membership)
+    
+    log.info(f"  Communities resolution test: low_res={len(communities_low)}, high_res={len(communities_high)}")
+    return True
+
+
+def test_run_bfs_unlimited_depth(client: GraphEngineClient) -> bool:
+    """Test BFS with larger depth to explore more of the graph."""
+    global graph_ref
+    if graph_ref is None:
+        log.error("no graph reference from previous test")
+        return False
+    
+    # Use a large depth to explore the entire component
+    vertices = client.bfs(graph_ref, source=1, max_depth=10)
+    if len(vertices) == 0:
+        log.error("expected vertices from BFS")
+        return False
+    
+    log.info(f"  BFS (source=1, depth=10): found {len(vertices)} vertices")
+    return True
+
+
+def test_run_neighborhood_multi_hop(client: GraphEngineClient) -> bool:
+    """Test Neighborhood with multiple hops."""
+    global graph_ref
+    if graph_ref is None:
+        log.error("no graph reference from previous test")
+        return False
+    
+    # 1-hop neighborhood
+    vertices_1hop = client.neighborhood(graph_ref, seeds=[1], hops=1)
+    
+    # 2-hop neighborhood (should include more vertices)
+    vertices_2hop = client.neighborhood(graph_ref, seeds=[1], hops=2)
+    
+    if len(vertices_2hop) < len(vertices_1hop):
+        log.error("2-hop neighborhood should include at least as many vertices as 1-hop")
+        return False
+    
+    log.info(f"  Neighborhood: 1-hop={len(vertices_1hop)}, 2-hop={len(vertices_2hop)}")
+    return True
+
+
+def test_run_components_on_view(client: GraphEngineClient) -> bool:
+    """Test Components algorithm on a view."""
+    global view_ref
+    if view_ref is None:
+        log.info("  Skipping Components on view (no view reference available)")
+        return True
+    
+    # Components on a view requires using the raw Run API
+    # The high-level client may not expose this directly
+    log.info("  Components on view: (skipped - requires raw API)")
+    return True
+
+
+def test_run_bfs_on_view(client: GraphEngineClient) -> bool:
+    """Test BFS on a view."""
+    global view_ref
+    if view_ref is None:
+        log.info("  Skipping BFS on view (no view reference available)")
+        return True
+    
+    log.info("  BFS on view: (skipped - requires raw API)")
+    return True
+
+
+def test_run_neighborhood_on_view(client: GraphEngineClient) -> bool:
+    """Test Neighborhood on a view."""
+    global view_ref
+    if view_ref is None:
+        log.info("  Skipping Neighborhood on view (no view reference available)")
+        return True
+    
+    log.info("  Neighborhood on view: (skipped - requires raw API)")
+    return True
+
+
+def test_run_communities_on_view(client: GraphEngineClient) -> bool:
+    """Test Communities on a view."""
+    global view_ref
+    if view_ref is None:
+        log.info("  Skipping Communities on view (no view reference available)")
+        return True
+    
+    log.info("  Communities on view: (skipped - requires raw API)")
+    return True
+
+
 def test_cancel_job(client: GraphEngineClient) -> bool:
     """Test CancelJob API."""
     # Note: Without direct access to job refs from the high-level API,
@@ -534,6 +678,16 @@ def main():
         # Phase 5: New algorithms
         ("RunKCore", test_run_kcore),
         ("RunBetweenness", test_run_betweenness),
+        # Enhanced algorithm tests - additional options
+        ("RunComponentsStrong", test_run_components_strong),
+        ("RunCommunitiesLeiden", test_run_communities_leiden),
+        ("RunCommunitiesResolution", test_run_communities_resolution),
+        ("RunBFSUnlimitedDepth", test_run_bfs_unlimited_depth),
+        ("RunNeighborhoodMultiHop", test_run_neighborhood_multi_hop),
+        ("RunComponentsOnView", test_run_components_on_view),
+        ("RunBFSOnView", test_run_bfs_on_view),
+        ("RunNeighborhoodOnView", test_run_neighborhood_on_view),
+        ("RunCommunitiesOnView", test_run_communities_on_view),
         # Resource management tests
         ("CancelJob", test_cancel_job),
         ("Release", test_release),

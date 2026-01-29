@@ -10,7 +10,6 @@ proto:
 	@echo "Generating Python proto code..."
 	@rm -rf $(GEN_DIR)
 	@mkdir -p $(GEN_DIR)
-	@touch $(GEN_DIR)/__init__.py
 	python3 -m grpc_tools.protoc \
 		--python_out=$(GEN_DIR) \
 		--grpc_python_out=$(GEN_DIR) \
@@ -22,19 +21,20 @@ proto:
 		mv $(GEN_DIR)/graphengine/v1/* $(GEN_DIR)/; \
 		rm -rf $(GEN_DIR)/graphengine; \
 	fi
-	@# Fix imports in all generated files
-	@echo "Fixing imports in generated files..."
-	@for f in $(GEN_DIR)/*.py $(GEN_DIR)/*.pyi; do \
+	@# Fix import statements at line start only (do not modify binary descriptor data)
+	@# Change 'from graphengine.v1 import' to 'from . import' for relative imports
+	@echo "Fixing import statements in generated files..."
+	@for f in $(GEN_DIR)/*.py; do \
 		if [ -f "$$f" ]; then \
-			sed -i.bak 's/from graphengine\.v1 import/from graphengine.gen import/g' "$$f"; \
-			sed -i.bak 's/from graphengine\.v1\./from graphengine.gen./g' "$$f"; \
-			sed -i.bak 's/graphengine\.v1\./graphengine.gen./g' "$$f"; \
+			sed -i.bak 's/^from graphengine\.v1 import/from . import/g' "$$f"; \
 			rm -f "$$f.bak"; \
 		fi \
 	done
 	@# Create __init__.py with exports
-	@echo "from .graph_engine_pb2 import *" >> $(GEN_DIR)/__init__.py
+	@echo "from .graph_engine_pb2 import *" > $(GEN_DIR)/__init__.py
+	@echo "from .graph_engine_pb2_grpc import *" >> $(GEN_DIR)/__init__.py
 	@echo "from .graph_engine_ops_pb2 import *" >> $(GEN_DIR)/__init__.py
+	@echo "from .graph_engine_ops_pb2_grpc import *" >> $(GEN_DIR)/__init__.py
 	@echo "Proto generation complete"
 
 # Clean generated files

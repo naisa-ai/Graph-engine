@@ -3,7 +3,7 @@
 import grpc
 import warnings
 
-from graphengine.gen import graph_engine_ops_pb2 as graphengine_dot_v1_dot_graph__engine__ops__pb2
+from . import graph_engine_ops_pb2 as graphengine_dot_v1_dot_graph__engine__ops__pb2
 
 GRPC_GENERATED_VERSION = '1.76.0'
 GRPC_VERSION = grpc.__version__
@@ -39,37 +39,37 @@ class GraphEngineOpsStub(object):
             channel: A grpc.Channel.
         """
         self.Health = channel.unary_unary(
-                '/graphengine.gen.GraphEngineOps/Health',
+                '/graphengine.v1.GraphEngineOps/Health',
                 request_serializer=graphengine_dot_v1_dot_graph__engine__ops__pb2.HealthRequest.SerializeToString,
                 response_deserializer=graphengine_dot_v1_dot_graph__engine__ops__pb2.HealthResponse.FromString,
                 _registered_method=True)
         self.ListGraphs = channel.unary_unary(
-                '/graphengine.gen.GraphEngineOps/ListGraphs',
+                '/graphengine.v1.GraphEngineOps/ListGraphs',
                 request_serializer=graphengine_dot_v1_dot_graph__engine__ops__pb2.ListGraphsRequest.SerializeToString,
                 response_deserializer=graphengine_dot_v1_dot_graph__engine__ops__pb2.ListGraphsResponse.FromString,
                 _registered_method=True)
         self.DescribeGraph = channel.unary_unary(
-                '/graphengine.gen.GraphEngineOps/DescribeGraph',
+                '/graphengine.v1.GraphEngineOps/DescribeGraph',
                 request_serializer=graphengine_dot_v1_dot_graph__engine__ops__pb2.DescribeGraphRequest.SerializeToString,
                 response_deserializer=graphengine_dot_v1_dot_graph__engine__ops__pb2.DescribeGraphResponse.FromString,
                 _registered_method=True)
         self.CacheStats = channel.unary_unary(
-                '/graphengine.gen.GraphEngineOps/CacheStats',
+                '/graphengine.v1.GraphEngineOps/CacheStats',
                 request_serializer=graphengine_dot_v1_dot_graph__engine__ops__pb2.CacheStatsRequest.SerializeToString,
                 response_deserializer=graphengine_dot_v1_dot_graph__engine__ops__pb2.CacheStatsResponse.FromString,
                 _registered_method=True)
         self.ValidateGraph = channel.unary_unary(
-                '/graphengine.gen.GraphEngineOps/ValidateGraph',
+                '/graphengine.v1.GraphEngineOps/ValidateGraph',
                 request_serializer=graphengine_dot_v1_dot_graph__engine__ops__pb2.ValidateGraphRequest.SerializeToString,
                 response_deserializer=graphengine_dot_v1_dot_graph__engine__ops__pb2.ValidateGraphResponse.FromString,
                 _registered_method=True)
         self.TraceJob = channel.unary_unary(
-                '/graphengine.gen.GraphEngineOps/TraceJob',
+                '/graphengine.v1.GraphEngineOps/TraceJob',
                 request_serializer=graphengine_dot_v1_dot_graph__engine__ops__pb2.TraceJobRequest.SerializeToString,
                 response_deserializer=graphengine_dot_v1_dot_graph__engine__ops__pb2.TraceJobResponse.FromString,
                 _registered_method=True)
         self.ExportSubgraph = channel.unary_stream(
-                '/graphengine.gen.GraphEngineOps/ExportSubgraph',
+                '/graphengine.v1.GraphEngineOps/ExportSubgraph',
                 request_serializer=graphengine_dot_v1_dot_graph__engine__ops__pb2.ExportSubgraphRequest.SerializeToString,
                 response_deserializer=graphengine_dot_v1_dot_graph__engine__ops__pb2.ExportChunk.FromString,
                 _registered_method=True)
@@ -171,9 +171,9 @@ def add_GraphEngineOpsServicer_to_server(servicer, server):
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
-            'graphengine.gen.GraphEngineOps', rpc_method_handlers)
+            'graphengine.v1.GraphEngineOps', rpc_method_handlers)
     server.add_generic_rpc_handlers((generic_handler,))
-    server.add_registered_method_handlers('graphengine.gen.GraphEngineOps', rpc_method_handlers)
+    server.add_registered_method_handlers('graphengine.v1.GraphEngineOps', rpc_method_handlers)
 
 
  # This class is part of an EXPERIMENTAL API.
@@ -198,7 +198,7 @@ class GraphEngineOps(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/graphengine.gen.GraphEngineOps/Health',
+            '/graphengine.v1.GraphEngineOps/Health',
             graphengine_dot_v1_dot_graph__engine__ops__pb2.HealthRequest.SerializeToString,
             graphengine_dot_v1_dot_graph__engine__ops__pb2.HealthResponse.FromString,
             options,
@@ -225,7 +225,7 @@ class GraphEngineOps(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/graphengine.gen.GraphEngineOps/ListGraphs',
+            '/graphengine.v1.GraphEngineOps/ListGraphs',
             graphengine_dot_v1_dot_graph__engine__ops__pb2.ListGraphsRequest.SerializeToString,
             graphengine_dot_v1_dot_graph__engine__ops__pb2.ListGraphsResponse.FromString,
             options,
@@ -252,7 +252,7 @@ class GraphEngineOps(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/graphengine.gen.GraphEngineOps/DescribeGraph',
+            '/graphengine.v1.GraphEngineOps/DescribeGraph',
             graphengine_dot_v1_dot_graph__engine__ops__pb2.DescribeGraphRequest.SerializeToString,
             graphengine_dot_v1_dot_graph__engine__ops__pb2.DescribeGraphResponse.FromString,
             options,
@@ -279,7 +279,7 @@ class GraphEngineOps(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/graphengine.gen.GraphEngineOps/CacheStats',
+            '/graphengine.v1.GraphEngineOps/CacheStats',
             graphengine_dot_v1_dot_graph__engine__ops__pb2.CacheStatsRequest.SerializeToString,
             graphengine_dot_v1_dot_graph__engine__ops__pb2.CacheStatsResponse.FromString,
             options,
@@ -306,7 +306,7 @@ class GraphEngineOps(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/graphengine.gen.GraphEngineOps/ValidateGraph',
+            '/graphengine.v1.GraphEngineOps/ValidateGraph',
             graphengine_dot_v1_dot_graph__engine__ops__pb2.ValidateGraphRequest.SerializeToString,
             graphengine_dot_v1_dot_graph__engine__ops__pb2.ValidateGraphResponse.FromString,
             options,
@@ -333,7 +333,7 @@ class GraphEngineOps(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/graphengine.gen.GraphEngineOps/TraceJob',
+            '/graphengine.v1.GraphEngineOps/TraceJob',
             graphengine_dot_v1_dot_graph__engine__ops__pb2.TraceJobRequest.SerializeToString,
             graphengine_dot_v1_dot_graph__engine__ops__pb2.TraceJobResponse.FromString,
             options,
@@ -360,7 +360,7 @@ class GraphEngineOps(object):
         return grpc.experimental.unary_stream(
             request,
             target,
-            '/graphengine.gen.GraphEngineOps/ExportSubgraph',
+            '/graphengine.v1.GraphEngineOps/ExportSubgraph',
             graphengine_dot_v1_dot_graph__engine__ops__pb2.ExportSubgraphRequest.SerializeToString,
             graphengine_dot_v1_dot_graph__engine__ops__pb2.ExportChunk.FromString,
             options,
