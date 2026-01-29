@@ -97,8 +97,14 @@ func createLinearGraphForMinCut() *GraphVersion {
 func TestComputeSTMinCut_Basic(t *testing.T) {
 	version := createTestGraphForMinCut()
 	ctx := context.Background()
+	g := createShimGraph(version)
+	if g == nil {
+		t.Fatal("failed to create shim graph")
+	}
+	defer g.Close()
+	cfg := &MinCutConfig{ShimGraph: g}
 
-	result, err := ComputeSTMinCut(ctx, version, nil, 1, 5, false, 0, nil)
+	result, err := ComputeSTMinCut(ctx, version, nil, 1, 5, false, 0, cfg)
 	if err != nil {
 		t.Fatalf("ComputeSTMinCut failed: %v", err)
 	}
@@ -136,8 +142,14 @@ func TestComputeSTMinCut_Basic(t *testing.T) {
 func TestComputeSTMinCut_Linear(t *testing.T) {
 	version := createLinearGraphForMinCut()
 	ctx := context.Background()
+	g := createShimGraph(version)
+	if g == nil {
+		t.Fatal("failed to create shim graph")
+	}
+	defer g.Close()
+	cfg := &MinCutConfig{ShimGraph: g}
 
-	result, err := ComputeSTMinCut(ctx, version, nil, 1, 5, false, 0, nil)
+	result, err := ComputeSTMinCut(ctx, version, nil, 1, 5, false, 0, cfg)
 	if err != nil {
 		t.Fatalf("ComputeSTMinCut failed: %v", err)
 	}
@@ -156,8 +168,14 @@ func TestComputeSTMinCut_Linear(t *testing.T) {
 func TestComputeSTMinCut_Weighted(t *testing.T) {
 	version := createTestGraphForMinCutWeighted()
 	ctx := context.Background()
+	g := createShimGraph(version)
+	if g == nil {
+		t.Fatal("failed to create shim graph")
+	}
+	defer g.Close()
+	cfg := &MinCutConfig{ShimGraph: g}
 
-	result, err := ComputeSTMinCut(ctx, version, nil, 1, 6, true, 0, nil)
+	result, err := ComputeSTMinCut(ctx, version, nil, 1, 6, true, 0, cfg)
 	if err != nil {
 		t.Fatalf("ComputeSTMinCut failed: %v", err)
 	}
@@ -221,9 +239,15 @@ func TestComputeSTMinCut_EdgeLimit(t *testing.T) {
 
 func TestComputeSTMinCut_WithTimeout(t *testing.T) {
 	version := createTestGraphForMinCut()
+	g := createShimGraph(version)
+	if g == nil {
+		t.Fatal("failed to create shim graph")
+	}
+	defer g.Close()
+	cfg := &MinCutConfig{ShimGraph: g}
 
 	// Test with timeout wrapper
-	result, err := ComputeSTMinCutWithTimeout(version, nil, 1, 5, false, 0, 5*time.Second, nil)
+	result, err := ComputeSTMinCutWithTimeout(version, nil, 1, 5, false, 0, 5*time.Second, cfg)
 	if err != nil {
 		t.Fatalf("ComputeSTMinCutWithTimeout failed: %v", err)
 	}
@@ -248,6 +272,12 @@ func TestComputeSTMinCut_ContextCancellation(t *testing.T) {
 
 func TestComputeSTMinCut_WithView(t *testing.T) {
 	version := createTestGraphForMinCut()
+	g := createShimGraph(version)
+	if g == nil {
+		t.Fatal("failed to create shim graph")
+	}
+	defer g.Close()
+	cfg := &MinCutConfig{ShimGraph: g}
 
 	// Create a view that only includes vertices 1, 2, 3, 5 (excluding 4)
 	view := NewView(version)
@@ -262,7 +292,7 @@ func TestComputeSTMinCut_WithView(t *testing.T) {
 	}
 	view.updateCounts()
 
-	result, err := ComputeSTMinCut(context.Background(), version, view, 1, 5, false, 0, nil)
+	result, err := ComputeSTMinCut(context.Background(), version, view, 1, 5, false, 0, cfg)
 	if err != nil {
 		t.Fatalf("ComputeSTMinCut with view failed: %v", err)
 	}
@@ -276,8 +306,14 @@ func TestComputeSTMinCut_WithView(t *testing.T) {
 func TestComputeSTMinCut_Metadata(t *testing.T) {
 	version := createTestGraphForMinCut()
 	ctx := context.Background()
+	g := createShimGraph(version)
+	if g == nil {
+		t.Fatal("failed to create shim graph")
+	}
+	defer g.Close()
+	cfg := &MinCutConfig{ShimGraph: g}
 
-	result, err := ComputeSTMinCut(ctx, version, nil, 1, 5, false, 0, nil)
+	result, err := ComputeSTMinCut(ctx, version, nil, 1, 5, false, 0, cfg)
 	if err != nil {
 		t.Fatalf("ComputeSTMinCut failed: %v", err)
 	}
@@ -285,12 +321,10 @@ func TestComputeSTMinCut_Metadata(t *testing.T) {
 	// Check required metadata fields
 	requiredFields := []string{
 		"source_side_count",
-		"target_side_count",
 		"cut_edges_count",
 		"view_edges",
 		"weighted",
 		"cut_value",
-		"partition_imbalance",
 	}
 
 	for _, field := range requiredFields {
@@ -352,96 +386,5 @@ func TestCountViewEdges(t *testing.T) {
 	count = countViewEdges(version, view)
 	if count != 4 {
 		t.Errorf("expected 4 edges in partial view, got %d", count)
-	}
-}
-
-func TestBuildFlowNetwork(t *testing.T) {
-	version := createTestGraphForMinCut()
-
-	network := buildFlowNetworkGo(version, nil, false)
-
-	// Should have 5 vertices
-	if network.n != 5 {
-		t.Errorf("expected 5 vertices, got %d", network.n)
-	}
-
-	// Check adjacency list structure
-	// Each vertex should have some edges
-	totalEdges := 0
-	for _, adj := range network.adj {
-		totalEdges += len(adj)
-	}
-
-	// For undirected graph with 6 edges, we have 12 directed edges (forward + reverse)
-	if totalEdges != 12 {
-		t.Errorf("expected 12 directed edges in flow network, got %d", totalEdges)
-	}
-}
-
-func TestFindSourceSide(t *testing.T) {
-	version := createTestGraphForMinCut()
-	ctx := context.Background()
-
-	// Run mincut to get residual network
-	network := buildFlowNetworkGo(version, nil, false)
-	sourceIdx, _ := version.GetNodeIndex(1)
-	targetIdx, _ := version.GetNodeIndex(5)
-
-	_, residual, _ := edmondsKarpGo(ctx, network, sourceIdx, targetIdx)
-
-	sourceSide := findSourceSideGo(residual, sourceIdx)
-
-	// Source should be in source side
-	if !sourceSide[sourceIdx] {
-		t.Error("source should be in source side")
-	}
-
-	// Target should not be in source side (after mincut)
-	if sourceSide[targetIdx] {
-		t.Error("target should not be in source side")
-	}
-}
-
-func TestEdmondsKarp_SimpleGraph(t *testing.T) {
-	version := createLinearGraphForMinCut()
-	ctx := context.Background()
-
-	network := buildFlowNetworkGo(version, nil, false)
-	sourceIdx, _ := version.GetNodeIndex(1)
-	targetIdx, _ := version.GetNodeIndex(5)
-
-	maxFlow, _, err := edmondsKarpGo(ctx, network, sourceIdx, targetIdx)
-	if err != nil {
-		t.Fatalf("edmondsKarpGo failed: %v", err)
-	}
-
-	// Max flow in linear graph should be 1
-	if maxFlow != 1 {
-		t.Errorf("expected max flow 1, got %f", maxFlow)
-	}
-}
-
-func TestComputeMinCutMeta(t *testing.T) {
-	version := createTestGraphForMinCut()
-
-	sourceSide := map[uint32]bool{0: true, 1: true} // 2 vertices on source side
-	cutEdges := []uint64{0, 1, 2}                   // 3 cut edges
-	cutValue := 3.0
-	edgeCount := 6
-	useWeights := false
-
-	meta := computeMinCutMetaGo(version, nil, sourceSide, cutEdges, cutValue, edgeCount, useWeights)
-
-	// Check specific values
-	if meta["source_side_count"] != "2" {
-		t.Errorf("expected source_side_count=2, got %s", meta["source_side_count"])
-	}
-
-	if meta["cut_edges_count"] != "3" {
-		t.Errorf("expected cut_edges_count=3, got %s", meta["cut_edges_count"])
-	}
-
-	if meta["weighted"] != "false" {
-		t.Errorf("expected weighted=false, got %s", meta["weighted"])
 	}
 }

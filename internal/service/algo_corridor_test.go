@@ -5,7 +5,17 @@ import (
 	"time"
 
 	gepb "github.com/naisa-ai/graph-engine/gen/graphengine/v1"
+	"github.com/naisa-ai/graph-engine/internal/shim"
 )
+
+// createShimGraphForCorridor creates a shim graph for corridor testing.
+func createShimGraphForCorridor(version *GraphVersion) *shim.Graph {
+	g, err := shim.NewGraph(uint32(version.VCount), version.EdgeSrc, version.EdgeDst, version.Directed)
+	if err != nil {
+		return nil
+	}
+	return g
+}
 
 // createTestGraphForCorridor creates a graph for corridor testing.
 // Graph structure:
@@ -67,9 +77,15 @@ func createTestGraphWithKinds() *GraphVersion {
 
 func TestComputeCorridor_ShortestPathHull_Basic(t *testing.T) {
 	version := createTestGraphForCorridor()
+	g := createShimGraphForCorridor(version)
+	if g == nil {
+		t.Fatal("failed to create shim graph")
+	}
+	defer g.Close()
+	cfg := &ShortestPathConfig{ShimGraph: g}
 
 	// Corridor from 1 to 4 with 0 hops expansion
-	result, err := ComputeCorridor(version, nil, 1, 4, gepb.CorridorSpec_SHORTEST_PATH_HULL, 0, 0)
+	result, err := ComputeCorridor(version, nil, 1, 4, gepb.CorridorSpec_SHORTEST_PATH_HULL, 0, 0, cfg)
 	if err != nil {
 		t.Fatalf("ComputeCorridor failed: %v", err)
 	}
@@ -96,9 +112,15 @@ func TestComputeCorridor_ShortestPathHull_Basic(t *testing.T) {
 
 func TestComputeCorridor_ShortestPathHull_WithExpansion(t *testing.T) {
 	version := createTestGraphForCorridor()
+	g := createShimGraphForCorridor(version)
+	if g == nil {
+		t.Fatal("failed to create shim graph")
+	}
+	defer g.Close()
+	cfg := &ShortestPathConfig{ShimGraph: g}
 
 	// Corridor from 1 to 4 with 1 hop expansion
-	result, err := ComputeCorridor(version, nil, 1, 4, gepb.CorridorSpec_SHORTEST_PATH_HULL, 1, 0)
+	result, err := ComputeCorridor(version, nil, 1, 4, gepb.CorridorSpec_SHORTEST_PATH_HULL, 1, 0, cfg)
 	if err != nil {
 		t.Fatalf("ComputeCorridor failed: %v", err)
 	}
@@ -122,11 +144,17 @@ func TestComputeCorridor_ShortestPathHull_WithExpansion(t *testing.T) {
 	}
 }
 
-func TestComputeCorridor_CommunityAware(t *testing.T) {
+func TestComputeCorridor_CommunityAware_NoCommunities(t *testing.T) {
 	version := createTestGraphForCorridor()
+	g := createShimGraphForCorridor(version)
+	if g == nil {
+		t.Fatal("failed to create shim graph")
+	}
+	defer g.Close()
+	cfg := &ShortestPathConfig{ShimGraph: g}
 
-	// Community-aware corridor (falls back to endpoint expansion)
-	result, err := ComputeCorridor(version, nil, 1, 12, gepb.CorridorSpec_COMMUNITY_AWARE, 1, 0)
+	// Community-aware corridor (falls back to endpoint expansion when no communities)
+	result, err := ComputeCorridor(version, nil, 1, 12, gepb.CorridorSpec_COMMUNITY_AWARE, 1, 0, cfg)
 	if err != nil {
 		t.Fatalf("ComputeCorridor failed: %v", err)
 	}
@@ -146,10 +174,156 @@ func TestComputeCorridor_CommunityAware(t *testing.T) {
 	}
 }
 
+func TestComputeCorridor_CommunityAware_WithCommunities(t *testing.T) {
+	version := createTestGraphForCorridor()
+	g := createShimGraphForCorridor(version)
+	if g == nil {
+		t.Fatal("failed to create shim graph")
+	}
+	defer g.Close()
+	cfg := &ShortestPathConfig{ShimGraph: g}
+
+	// Set up community membership
+	// Grid layout:
+	//   1 --- 2 --- 3 --- 4      (community 0)
+	//   |     |     |     |
+	//   5 --- 6 --- 7 --- 8      (community 0 for 5,6; community 1 for 7,8)
+	//   |     |     |     |
+	//   9 --- 10 -- 11 -- 12     (community 1)
+	//
+	// Community 0: vertices 1,2,3,4,5,6 (top-left region)
+	// Community 1: vertices 7,8,9,10,11,12 (bottom-right region)
+	membership := make([]uint32, version.VCount)
+	for i := uint64(0); i < version.VCount; i++ {
+		nodeID, _ := version.GetNodeID(uint32(i))
+		if nodeID <= 6 {
+			membership[i] = 0 // Community 0
+		} else {
+			membership[i] = 1 // Community 1
+		}
+	}
+	version.SetCommunities(membership, 2)
+
+	// Corridor from vertex 1 (community 0) to vertex 12 (community 1)
+	result, err := ComputeCorridor(version, nil, 1, 12, gepb.CorridorSpec_COMMUNITY_AWARE, 0, 0, cfg)
+	if err != nil {
+		t.Fatalf("ComputeCorridor failed: %v", err)
+	}
+
+	if result.View == nil {
+		t.Fatal("expected corridor view")
+	}
+
+	// Check method
+	if result.Method != CorridorMethodCommunityAware {
+		t.Errorf("expected method COMMUNITY_AWARE, got %s", result.Method)
+	}
+
+	// Should indicate communities were used
+	if result.Meta["communities_used"] != "true" {
+		t.Errorf("expected communities_used=true in metadata, got %s", result.Meta["communities_used"])
+	}
+
+	// Source and target in different communities
+	if result.Meta["same_community"] != "false" {
+		t.Errorf("expected same_community=false, got %s", result.Meta["same_community"])
+	}
+
+	// Corridor should include vertices from both communities
+	// All 12 vertices should be included since we're spanning two communities
+	if result.View.VCount < 6 {
+		t.Errorf("expected at least 6 vertices in corridor spanning two communities, got %d", result.View.VCount)
+	}
+
+	t.Logf("Community-aware corridor: %d vertices, %d edges", result.View.VCount, result.View.ECount)
+	t.Logf("Source community: %s, Target community: %s", result.Meta["source_community"], result.Meta["target_community"])
+}
+
+func TestComputeCorridor_CommunityAware_SameCommunity(t *testing.T) {
+	version := createTestGraphForCorridor()
+	g := createShimGraphForCorridor(version)
+	if g == nil {
+		t.Fatal("failed to create shim graph")
+	}
+	defer g.Close()
+	cfg := &ShortestPathConfig{ShimGraph: g}
+
+	// All vertices in same community
+	membership := make([]uint32, version.VCount)
+	for i := range membership {
+		membership[i] = 0 // All in community 0
+	}
+	version.SetCommunities(membership, 1)
+
+	// Corridor from vertex 1 to vertex 4 (same community)
+	result, err := ComputeCorridor(version, nil, 1, 4, gepb.CorridorSpec_COMMUNITY_AWARE, 0, 0, cfg)
+	if err != nil {
+		t.Fatalf("ComputeCorridor failed: %v", err)
+	}
+
+	if result.View == nil {
+		t.Fatal("expected corridor view")
+	}
+
+	// Should indicate same community
+	if result.Meta["same_community"] != "true" {
+		t.Errorf("expected same_community=true, got %s", result.Meta["same_community"])
+	}
+
+	// Should include all vertices (since they're all in the same community)
+	if result.View.VCount != version.VCount {
+		t.Errorf("expected all %d vertices in same-community corridor, got %d", version.VCount, result.View.VCount)
+	}
+
+	t.Logf("Same-community corridor: %d vertices", result.View.VCount)
+}
+
+func TestComputeCorridor_CommunityAware_WithHops(t *testing.T) {
+	version := createTestGraphForCorridor()
+	g := createShimGraphForCorridor(version)
+	if g == nil {
+		t.Fatal("failed to create shim graph")
+	}
+	defer g.Close()
+	cfg := &ShortestPathConfig{ShimGraph: g}
+
+	// Two communities
+	membership := make([]uint32, version.VCount)
+	for i := uint64(0); i < version.VCount; i++ {
+		nodeID, _ := version.GetNodeID(uint32(i))
+		if nodeID <= 6 {
+			membership[i] = 0
+		} else {
+			membership[i] = 1
+		}
+	}
+	version.SetCommunities(membership, 2)
+
+	// Corridor with expansion hops
+	resultNoHops, err := ComputeCorridor(version, nil, 1, 12, gepb.CorridorSpec_COMMUNITY_AWARE, 0, 0, cfg)
+	if err != nil {
+		t.Fatalf("ComputeCorridor (no hops) failed: %v", err)
+	}
+
+	resultWithHops, err := ComputeCorridor(version, nil, 1, 12, gepb.CorridorSpec_COMMUNITY_AWARE, 1, 0, cfg)
+	if err != nil {
+		t.Fatalf("ComputeCorridor (with hops) failed: %v", err)
+	}
+
+	// With hops, corridor should be at least as large
+	if resultWithHops.View.VCount < resultNoHops.View.VCount {
+		t.Errorf("corridor with hops should have >= vertices: %d < %d",
+			resultWithHops.View.VCount, resultNoHops.View.VCount)
+	}
+
+	t.Logf("No hops: %d vertices, With hops: %d vertices",
+		resultNoHops.View.VCount, resultWithHops.View.VCount)
+}
+
 func TestComputeCorridor_InvalidSource(t *testing.T) {
 	version := createTestGraphForCorridor()
 
-	_, err := ComputeCorridor(version, nil, 999, 4, gepb.CorridorSpec_SHORTEST_PATH_HULL, 1, 0)
+	_, err := ComputeCorridor(version, nil, 999, 4, gepb.CorridorSpec_SHORTEST_PATH_HULL, 1, 0, nil)
 	if err == nil {
 		t.Error("expected error for invalid source")
 	}
@@ -158,7 +332,7 @@ func TestComputeCorridor_InvalidSource(t *testing.T) {
 func TestComputeCorridor_InvalidTarget(t *testing.T) {
 	version := createTestGraphForCorridor()
 
-	_, err := ComputeCorridor(version, nil, 1, 999, gepb.CorridorSpec_SHORTEST_PATH_HULL, 1, 0)
+	_, err := ComputeCorridor(version, nil, 1, 999, gepb.CorridorSpec_SHORTEST_PATH_HULL, 1, 0, nil)
 	if err == nil {
 		t.Error("expected error for invalid target")
 	}
@@ -166,6 +340,12 @@ func TestComputeCorridor_InvalidTarget(t *testing.T) {
 
 func TestComputeCorridor_WithView(t *testing.T) {
 	version := createTestGraphForCorridor()
+	g := createShimGraphForCorridor(version)
+	if g == nil {
+		t.Fatal("failed to create shim graph")
+	}
+	defer g.Close()
+	cfg := &ShortestPathConfig{ShimGraph: g}
 
 	// Create a view that only includes top row (1,2,3,4) and middle row (5,6,7,8)
 	baseView := NewView(version)
@@ -188,7 +368,7 @@ func TestComputeCorridor_WithView(t *testing.T) {
 	baseView.updateCounts()
 
 	// Corridor from 1 to 8 should only use edges in view
-	result, err := ComputeCorridor(version, baseView, 1, 8, gepb.CorridorSpec_SHORTEST_PATH_HULL, 0, 0)
+	result, err := ComputeCorridor(version, baseView, 1, 8, gepb.CorridorSpec_SHORTEST_PATH_HULL, 0, 0, cfg)
 	if err != nil {
 		t.Fatalf("ComputeCorridor with view failed: %v", err)
 	}
@@ -206,8 +386,14 @@ func TestComputeCorridor_WithView(t *testing.T) {
 
 func TestComputeCorridor_Metadata(t *testing.T) {
 	version := createTestGraphForCorridor()
+	g := createShimGraphForCorridor(version)
+	if g == nil {
+		t.Fatal("failed to create shim graph")
+	}
+	defer g.Close()
+	cfg := &ShortestPathConfig{ShimGraph: g}
 
-	result, err := ComputeCorridor(version, nil, 1, 4, gepb.CorridorSpec_SHORTEST_PATH_HULL, 1, 0)
+	result, err := ComputeCorridor(version, nil, 1, 4, gepb.CorridorSpec_SHORTEST_PATH_HULL, 1, 0, cfg)
 	if err != nil {
 		t.Fatalf("ComputeCorridor failed: %v", err)
 	}
@@ -305,9 +491,15 @@ func TestValidateCorridorSpec(t *testing.T) {
 
 func TestEstimateCorridorSize(t *testing.T) {
 	version := createTestGraphForCorridor()
+	g := createShimGraphForCorridor(version)
+	if g == nil {
+		t.Fatal("failed to create shim graph")
+	}
+	defer g.Close()
+	cfg := &ShortestPathConfig{ShimGraph: g}
 
 	// Estimate corridor size from 1 to 4 with 1 hop
-	estimate, err := EstimateCorridorSize(version, nil, 1, 4, 1)
+	estimate, err := EstimateCorridorSize(version, nil, 1, 4, 1, cfg)
 	if err != nil {
 		t.Fatalf("EstimateCorridorSize failed: %v", err)
 	}
@@ -368,15 +560,21 @@ func TestCorridorWithDisconnectedGraph(t *testing.T) {
 	}
 
 	version, _ := NewGraphVersion("v1", "disconnected-test", false, build)
+	g := createShimGraphForCorridor(version)
+	if g == nil {
+		t.Fatal("failed to create shim graph")
+	}
+	defer g.Close()
+	cfg := &ShortestPathConfig{ShimGraph: g}
 
 	// Try to find corridor between disconnected components
-	_, err := ComputeCorridor(version, nil, 1, 12, gepb.CorridorSpec_SHORTEST_PATH_HULL, 1, 0)
+	_, err := ComputeCorridor(version, nil, 1, 12, gepb.CorridorSpec_SHORTEST_PATH_HULL, 1, 0, cfg)
 	if err == nil {
 		t.Error("expected error for disconnected components with SHORTEST_PATH_HULL")
 	}
 
 	// COMMUNITY_AWARE should still work (returns endpoint neighborhoods)
-	result, err := ComputeCorridor(version, nil, 1, 12, gepb.CorridorSpec_COMMUNITY_AWARE, 1, 0)
+	result, err := ComputeCorridor(version, nil, 1, 12, gepb.CorridorSpec_COMMUNITY_AWARE, 1, 0, cfg)
 	if err != nil {
 		t.Fatalf("COMMUNITY_AWARE should work for disconnected: %v", err)
 	}

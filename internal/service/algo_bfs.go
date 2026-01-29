@@ -85,13 +85,7 @@ type BFSConfig struct {
 
 // BFSShimConfig holds shim configuration for BFS computation.
 type BFSShimConfig struct {
-	// UseShim enables the igraph shim for BFS.
-	UseShim bool
-
-	// FallbackOnError falls back to pure Go if the shim encounters an error.
-	FallbackOnError bool
-
-	// ShimGraph is the shim graph to use (if UseShim is true).
+	// ShimGraph is the shim graph to use (required).
 	ShimGraph *shim.Graph
 
 	// ShimView is the shim view to use for view-based queries (optional).
@@ -107,10 +101,10 @@ func DefaultBFSConfig() *BFSConfig {
 	}
 }
 
-// ComputeBFS performs a breadth-first search from a source vertex.
+// ComputeBFS performs a breadth-first search from a source vertex using igraph.
 //
-// When shimCfg.UseShim is true and shimCfg.ShimGraph is provided, uses igraph via the C shim.
-// Otherwise, or on shim error with FallbackOnError=true, uses pure Go BFS.
+// This function requires a configured ShimGraph. The igraph C shim is always used
+// for optimal performance.
 func ComputeBFS(
 	ctx context.Context,
 	version *GraphVersion,
@@ -123,12 +117,9 @@ func ComputeBFS(
 		config = DefaultBFSConfig()
 	}
 
-	// Default shim config if nil
-	if shimCfg == nil {
-		shimCfg = &BFSShimConfig{
-			UseShim:         false,
-			FallbackOnError: true,
-		}
+	// Validate shim config
+	if shimCfg == nil || shimCfg.ShimGraph == nil {
+		return nil, fmt.Errorf("BFSShimConfig with ShimGraph is required")
 	}
 
 	// Convert external ID to internal index
@@ -149,23 +140,8 @@ func ComputeBFS(
 	default:
 	}
 
-	// Try igraph shim first if enabled
-	if shimCfg.UseShim && shimCfg.ShimGraph != nil {
-		result, err := computeBFSShim(version, shimCfg, sourceIdx, config)
-		if err == nil {
-			return result, nil
-		}
-
-		// Shim failed - fall back to Go implementation if configured
-		if shimCfg.FallbackOnError {
-			_ = err // Would log in production
-		} else {
-			return nil, fmt.Errorf("igraph shim BFS failed: %w", err)
-		}
-	}
-
-	// FALLBACK: Pure Go BFS
-	return computeBFSGo(ctx, version, view, sourceIdx, config)
+	// Use igraph shim for BFS computation
+	return computeBFSShim(version, shimCfg, sourceIdx, config)
 }
 
 // computeBFSShim performs BFS using the igraph C shim.
@@ -224,152 +200,6 @@ func computeBFSShim(
 	result.Meta["mode"] = config.Mode.String()
 
 	return result, nil
-}
-
-// =============================================================================
-// FALLBACK: Pure Go BFS implementation
-// =============================================================================
-
-// computeBFSGo performs BFS using pure Go.
-// FALLBACK: Pure Go implementation used when igraph shim is disabled or fails.
-func computeBFSGo(
-	ctx context.Context,
-	version *GraphVersion,
-	view *View,
-	sourceIdx uint32,
-	config *BFSConfig,
-) (*BFSResult, error) {
-	// Build adjacency list based on mode
-	adj := buildBFSAdjacencyListGo(version, view, config.Mode)
-
-	// BFS state
-	visited := make([]uint32, 0, version.VCount)
-	depths := make([]uint32, 0, version.VCount)
-	parents := make([]uint32, 0, version.VCount)
-	depthMap := make(map[uint32]uint32)
-	parentMap := make(map[uint32]uint32)
-
-	// Queue: (vertex, depth)
-	type queueItem struct {
-		vertex uint32
-		depth  uint32
-	}
-	queue := []queueItem{{sourceIdx, 0}}
-	depthMap[sourceIdx] = 0
-	parentMap[sourceIdx] = math.MaxUint32 // source has no parent
-
-	var maxDepthReached uint32
-
-	for len(queue) > 0 {
-		// Check context cancellation periodically
-		if len(visited)%1000 == 0 {
-			select {
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			default:
-			}
-		}
-
-		current := queue[0]
-		queue = queue[1:]
-
-		// Skip if already visited (can happen with duplicate queue entries)
-		if _, alreadyVisited := depthMap[current.vertex]; alreadyVisited && len(visited) > 0 {
-			// Check if this is the source (which is pre-added to depthMap)
-			found := false
-			for _, v := range visited {
-				if v == current.vertex {
-					found = true
-					break
-				}
-			}
-			if found {
-				continue
-			}
-		}
-
-		// Add to visited
-		visited = append(visited, current.vertex)
-		depths = append(depths, current.depth)
-		parents = append(parents, parentMap[current.vertex])
-
-		if current.depth > maxDepthReached {
-			maxDepthReached = current.depth
-		}
-
-		// Check depth limit
-		if config.MaxDepth > 0 && current.depth >= config.MaxDepth {
-			continue
-		}
-
-		// Explore neighbors
-		for _, neighbor := range adj[current.vertex] {
-			if _, seen := depthMap[neighbor]; !seen {
-				depthMap[neighbor] = current.depth + 1
-				parentMap[neighbor] = current.vertex
-				queue = append(queue, queueItem{neighbor, current.depth + 1})
-			}
-		}
-	}
-
-	result := &BFSResult{
-		Visited:         visited,
-		Depths:          depths,
-		Parents:         parents,
-		DepthMap:        depthMap,
-		NumVisited:      uint32(len(visited)),
-		MaxDepthReached: maxDepthReached,
-		Meta:            make(map[string]string),
-	}
-
-	// Convert to external IDs if requested
-	if config.ReturnExternalIDs {
-		result.VisitedExternal = make([]uint64, len(visited))
-		for i, idx := range visited {
-			nodeID, _ := version.GetNodeID(idx)
-			result.VisitedExternal[i] = nodeID
-		}
-	}
-
-	result.Meta["source"] = "go-fallback"
-	result.Meta["mode"] = config.Mode.String()
-
-	return result, nil
-}
-
-// buildBFSAdjacencyListGo builds an adjacency list for BFS based on traversal mode.
-// FALLBACK: Used by pure Go BFS implementation.
-func buildBFSAdjacencyListGo(version *GraphVersion, view *View, mode BFSMode) map[uint32][]uint32 {
-	adj := make(map[uint32][]uint32)
-
-	for i, srcIdx := range version.EdgeSrc {
-		dstIdx := version.EdgeDst[i]
-
-		// Apply view mask if present
-		if view != nil {
-			if !view.ContainsEdge(i) {
-				continue
-			}
-			if !view.ContainsVertexByIndex(srcIdx) || !view.ContainsVertexByIndex(dstIdx) {
-				continue
-			}
-		}
-
-		switch mode {
-		case BFSModeOut:
-			// Only outgoing edges: src -> dst
-			adj[srcIdx] = append(adj[srcIdx], dstIdx)
-		case BFSModeIn:
-			// Only incoming edges: dst -> src (reversed)
-			adj[dstIdx] = append(adj[dstIdx], srcIdx)
-		default: // BFSModeAll
-			// Both directions (undirected)
-			adj[srcIdx] = append(adj[srcIdx], dstIdx)
-			adj[dstIdx] = append(adj[dstIdx], srcIdx)
-		}
-	}
-
-	return adj
 }
 
 // =============================================================================

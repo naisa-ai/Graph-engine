@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025 Naisa AI, Inc.
+
 // Package graphengine provides a Go client library for the Graph-engine service.
 package graphengine
 

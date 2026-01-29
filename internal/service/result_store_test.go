@@ -21,6 +21,7 @@ func createTestAlgoResult(versionID string, algoKind AlgoKind, membershipSize in
 
 func TestResultStore_Store_Basic(t *testing.T) {
 	rs := NewResultStore(100, 0, time.Hour) // No memory limit
+	defer rs.Close()
 
 	result := createTestAlgoResult("v1", AlgoKindComponents, 100)
 
@@ -43,6 +44,7 @@ func TestResultStore_Store_Basic(t *testing.T) {
 
 func TestResultStore_Store_Duplicate(t *testing.T) {
 	rs := NewResultStore(100, 0, time.Hour)
+	defer rs.Close()
 
 	result1 := createTestAlgoResult("v1", AlgoKindComponents, 100)
 	result2 := &AlgoResult{ID: result1.ID} // Same ID
@@ -61,6 +63,7 @@ func TestResultStore_Store_Duplicate(t *testing.T) {
 
 func TestResultStore_Get(t *testing.T) {
 	rs := NewResultStore(100, 0, time.Hour)
+	defer rs.Close()
 
 	result := createTestAlgoResult("v1", AlgoKindComponents, 100)
 	rs.Store(result)
@@ -86,6 +89,7 @@ func TestResultStore_Get(t *testing.T) {
 
 func TestResultStore_GetNotFound(t *testing.T) {
 	rs := NewResultStore(100, 0, time.Hour)
+	defer rs.Close()
 
 	_, err := rs.Get("nonexistent")
 	if err == nil {
@@ -95,6 +99,7 @@ func TestResultStore_GetNotFound(t *testing.T) {
 
 func TestResultStore_CacheKey(t *testing.T) {
 	rs := NewResultStore(100, 0, time.Hour)
+	defer rs.Close()
 
 	versionID := "v1"
 	algoKind := AlgoKindComponents
@@ -132,6 +137,7 @@ func TestResultStore_CacheKey(t *testing.T) {
 func TestResultStore_LRUEviction_MaxItems(t *testing.T) {
 	// Create store with max 5 items
 	rs := NewResultStore(5, 0, time.Hour)
+	defer rs.Close()
 
 	// Add 5 items
 	for i := 0; i < 5; i++ {
@@ -179,6 +185,7 @@ func TestResultStore_MemoryEviction(t *testing.T) {
 	// Set memory limit to allow ~3 results
 	memoryLimit := memPerResult*3 + 100
 	rs := NewResultStore(100, memoryLimit, time.Hour)
+	defer rs.Close()
 
 	// Add 3 results - should succeed
 	for i := 0; i < 3; i++ {
@@ -213,6 +220,7 @@ func TestResultStore_MemoryEviction(t *testing.T) {
 func TestResultStore_TTLCleanup(t *testing.T) {
 	// Very short TTL for testing
 	rs := NewResultStore(100, 0, 10*time.Millisecond)
+	defer rs.Close()
 
 	result := createTestAlgoResult("v1", AlgoKindComponents, 100)
 	rs.Store(result)
@@ -237,6 +245,7 @@ func TestResultStore_TTLCleanup(t *testing.T) {
 func TestResultStore_PinnedNotEvicted(t *testing.T) {
 	// Store with max 3 items to allow room for a 3rd
 	rs := NewResultStore(3, 0, time.Hour)
+	defer rs.Close()
 
 	// Add 2 results
 	r1 := createTestAlgoResult("v1", AlgoKindComponents, 100)
@@ -271,6 +280,7 @@ func TestResultStore_PinnedNotEvicted(t *testing.T) {
 
 func TestResultStore_PinnedNotCleanedByTTL(t *testing.T) {
 	rs := NewResultStore(100, 0, 10*time.Millisecond)
+	defer rs.Close()
 
 	result := createTestAlgoResult("v1", AlgoKindComponents, 100)
 	rs.Store(result)
@@ -301,6 +311,7 @@ func TestResultStore_PinnedNotCleanedByTTL(t *testing.T) {
 
 func TestResultStore_ConcurrentAccess(t *testing.T) {
 	rs := NewResultStore(1000, 0, time.Hour)
+	defer rs.Close()
 
 	// Pre-populate
 	for i := 0; i < 10; i++ {
@@ -368,6 +379,7 @@ func TestResultStore_ConcurrentAccess(t *testing.T) {
 func TestResultStore_Stats(t *testing.T) {
 	memLimit := uint64(1000000)
 	rs := NewResultStore(50, memLimit, time.Hour)
+	defer rs.Close()
 
 	// Initially empty
 	stats := rs.Stats()
@@ -402,6 +414,7 @@ func TestResultStore_Stats(t *testing.T) {
 
 func TestResultStore_Delete(t *testing.T) {
 	rs := NewResultStore(100, 0, time.Hour)
+	defer rs.Close()
 
 	result := createTestAlgoResult("v1", AlgoKindComponents, 100)
 	rs.Store(result)
@@ -433,6 +446,7 @@ func TestResultStore_Delete(t *testing.T) {
 
 func TestResultStore_Delete_Pinned(t *testing.T) {
 	rs := NewResultStore(100, 0, time.Hour)
+	defer rs.Close()
 
 	result := createTestAlgoResult("v1", AlgoKindComponents, 100)
 	rs.Store(result)

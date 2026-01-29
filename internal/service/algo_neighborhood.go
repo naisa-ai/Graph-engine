@@ -84,13 +84,7 @@ type NeighborhoodConfig struct {
 
 // NeighborhoodShimConfig holds shim configuration for neighborhood computation.
 type NeighborhoodShimConfig struct {
-	// UseShim enables the igraph shim for neighborhood queries.
-	UseShim bool
-
-	// FallbackOnError falls back to pure Go if the shim encounters an error.
-	FallbackOnError bool
-
-	// ShimGraph is the shim graph to use (if UseShim is true).
+	// ShimGraph is the shim graph to use (required).
 	ShimGraph *shim.Graph
 
 	// ShimView is the shim view to use for view-based queries (optional).
@@ -107,10 +101,11 @@ func DefaultNeighborhoodConfig(hops uint32) *NeighborhoodConfig {
 	}
 }
 
-// ComputeNeighborhood finds all vertices within a specified number of hops from seed vertices.
+// ComputeNeighborhood finds all vertices within a specified number of hops from seed vertices
+// using igraph.
 //
-// When shimCfg.UseShim is true and shimCfg.ShimGraph is provided, uses igraph via the C shim.
-// Otherwise, or on shim error with FallbackOnError=true, uses pure Go BFS-based neighborhood.
+// This function requires a configured ShimGraph. The igraph C shim is always used
+// for optimal performance.
 func ComputeNeighborhood(
 	ctx context.Context,
 	version *GraphVersion,
@@ -129,12 +124,9 @@ func ComputeNeighborhood(
 		return nil, fmt.Errorf("seeds cannot be empty")
 	}
 
-	// Default shim config if nil
-	if shimCfg == nil {
-		shimCfg = &NeighborhoodShimConfig{
-			UseShim:         false,
-			FallbackOnError: true,
-		}
+	// Validate shim config
+	if shimCfg == nil || shimCfg.ShimGraph == nil {
+		return nil, fmt.Errorf("NeighborhoodShimConfig with ShimGraph is required")
 	}
 
 	// Convert external IDs to internal indices
@@ -158,23 +150,8 @@ func ComputeNeighborhood(
 	default:
 	}
 
-	// Try igraph shim first if enabled
-	if shimCfg.UseShim && shimCfg.ShimGraph != nil {
-		result, err := computeNeighborhoodShim(version, shimCfg, seedIndices, config)
-		if err == nil {
-			return result, nil
-		}
-
-		// Shim failed - fall back to Go implementation if configured
-		if shimCfg.FallbackOnError {
-			_ = err // Would log in production
-		} else {
-			return nil, fmt.Errorf("igraph shim neighborhood failed: %w", err)
-		}
-	}
-
-	// FALLBACK: Pure Go BFS-based neighborhood
-	return computeNeighborhoodGo(ctx, version, view, seedIndices, config)
+	// Use igraph shim for neighborhood computation
+	return computeNeighborhoodShim(version, shimCfg, seedIndices, config)
 }
 
 // computeNeighborhoodShim computes neighborhood using the igraph C shim.
@@ -237,159 +214,6 @@ func computeNeighborhoodShim(
 	result.Meta["hops"] = fmt.Sprintf("%d", config.Hops)
 
 	return result, nil
-}
-
-// =============================================================================
-// FALLBACK: Pure Go BFS-based neighborhood implementation
-// =============================================================================
-
-// computeNeighborhoodGo computes neighborhood using pure Go BFS.
-// FALLBACK: Pure Go implementation used when igraph shim is disabled or fails.
-func computeNeighborhoodGo(
-	ctx context.Context,
-	version *GraphVersion,
-	view *View,
-	seedIndices []uint32,
-	config *NeighborhoodConfig,
-) (*NeighborhoodResult, error) {
-	// Build adjacency list based on mode
-	adj := buildNeighborhoodAdjacencyListGo(version, view, config.Mode)
-
-	// Track visited vertices and their distances
-	distanceMap := make(map[uint32]uint32)
-	var verticesByDistance map[uint32][]uint32
-	if config.GroupByDistance {
-		verticesByDistance = make(map[uint32][]uint32)
-	}
-
-	// Initialize with seeds at distance 0
-	type queueItem struct {
-		vertex   uint32
-		distance uint32
-	}
-	queue := make([]queueItem, 0, len(seedIndices))
-
-	for _, seed := range seedIndices {
-		if _, seen := distanceMap[seed]; !seen {
-			distanceMap[seed] = 0
-			queue = append(queue, queueItem{seed, 0})
-			if config.GroupByDistance {
-				verticesByDistance[0] = append(verticesByDistance[0], seed)
-			}
-		}
-	}
-
-	// BFS to find neighborhood
-	for len(queue) > 0 {
-		// Check context cancellation periodically
-		if len(distanceMap)%1000 == 0 {
-			select {
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			default:
-			}
-		}
-
-		current := queue[0]
-		queue = queue[1:]
-
-		// Check hop limit
-		if current.distance >= config.Hops {
-			continue
-		}
-
-		// Explore neighbors
-		for _, neighbor := range adj[current.vertex] {
-			if _, seen := distanceMap[neighbor]; !seen {
-				newDist := current.distance + 1
-				distanceMap[neighbor] = newDist
-				queue = append(queue, queueItem{neighbor, newDist})
-				if config.GroupByDistance {
-					verticesByDistance[newDist] = append(verticesByDistance[newDist], neighbor)
-				}
-			}
-		}
-	}
-
-	// Build result arrays
-	vertices := make([]uint32, 0, len(distanceMap))
-	distances := make([]uint32, 0, len(distanceMap))
-
-	// Iterate in consistent order (by distance, then by vertex)
-	for dist := uint32(0); dist <= config.Hops; dist++ {
-		if config.GroupByDistance {
-			for _, v := range verticesByDistance[dist] {
-				vertices = append(vertices, v)
-				distances = append(distances, dist)
-			}
-		} else {
-			for v, d := range distanceMap {
-				if d == dist {
-					vertices = append(vertices, v)
-					distances = append(distances, d)
-				}
-			}
-		}
-	}
-
-	result := &NeighborhoodResult{
-		Vertices:           vertices,
-		Distances:          distances,
-		DistanceMap:        distanceMap,
-		NumVertices:        uint32(len(vertices)),
-		VerticesByDistance: verticesByDistance,
-		Meta:               make(map[string]string),
-	}
-
-	// Convert to external IDs if requested
-	if config.ReturnExternalIDs {
-		result.VerticesExternal = make([]uint64, len(vertices))
-		for i, idx := range vertices {
-			nodeID, _ := version.GetNodeID(idx)
-			result.VerticesExternal[i] = nodeID
-		}
-	}
-
-	result.Meta["source"] = "go-fallback"
-	result.Meta["mode"] = config.Mode.String()
-	result.Meta["hops"] = fmt.Sprintf("%d", config.Hops)
-
-	return result, nil
-}
-
-// buildNeighborhoodAdjacencyListGo builds an adjacency list for neighborhood based on traversal mode.
-// FALLBACK: Used by pure Go neighborhood implementation.
-func buildNeighborhoodAdjacencyListGo(version *GraphVersion, view *View, mode NeighborhoodMode) map[uint32][]uint32 {
-	adj := make(map[uint32][]uint32)
-
-	for i, srcIdx := range version.EdgeSrc {
-		dstIdx := version.EdgeDst[i]
-
-		// Apply view mask if present
-		if view != nil {
-			if !view.ContainsEdge(i) {
-				continue
-			}
-			if !view.ContainsVertexByIndex(srcIdx) || !view.ContainsVertexByIndex(dstIdx) {
-				continue
-			}
-		}
-
-		switch mode {
-		case NeighborhoodModeOut:
-			// Only outgoing edges: src -> dst
-			adj[srcIdx] = append(adj[srcIdx], dstIdx)
-		case NeighborhoodModeIn:
-			// Only incoming edges: dst -> src (reversed)
-			adj[dstIdx] = append(adj[dstIdx], srcIdx)
-		default: // NeighborhoodModeAll
-			// Both directions (undirected)
-			adj[srcIdx] = append(adj[srcIdx], dstIdx)
-			adj[dstIdx] = append(adj[dstIdx], srcIdx)
-		}
-	}
-
-	return adj
 }
 
 // =============================================================================

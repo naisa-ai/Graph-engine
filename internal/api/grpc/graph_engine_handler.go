@@ -13,9 +13,15 @@ import (
 
 	"github.com/naisa-ai/graph-engine/internal/metrics"
 	"github.com/naisa-ai/graph-engine/internal/service"
+	"github.com/naisa-ai/graph-engine/internal/shim"
 
 	gepb "github.com/naisa-ai/graph-engine/gen/graphengine/v1"
 )
+
+// createShimGraphForVersion creates a shim graph from a GraphVersion.
+func createShimGraphForVersion(version *service.GraphVersion) (*shim.Graph, error) {
+	return shim.NewGraph(uint32(version.VCount), version.EdgeSrc, version.EdgeDst, version.Directed)
+}
 
 // GraphEngineHandler implements the GraphEngine gRPC service.
 type GraphEngineHandler struct {
@@ -26,6 +32,7 @@ type GraphEngineHandler struct {
 	versionStore  *service.VersionStore
 	resultStore   *service.ResultStore
 	viewManager   *service.ViewManager
+	scheduler     *service.Scheduler
 }
 
 // NewGraphEngineHandler creates a new GraphEngineHandler.
@@ -36,6 +43,7 @@ func NewGraphEngineHandler(
 	versionStore *service.VersionStore,
 	resultStore *service.ResultStore,
 	viewManager *service.ViewManager,
+	scheduler *service.Scheduler,
 ) *GraphEngineHandler {
 	return &GraphEngineHandler{
 		logger:        logger,
@@ -44,6 +52,7 @@ func NewGraphEngineHandler(
 		versionStore:  versionStore,
 		resultStore:   resultStore,
 		viewManager:   viewManager,
+		scheduler:     scheduler,
 	}
 }
 
@@ -151,12 +160,30 @@ func (h *GraphEngineHandler) Upload(stream gepb.GraphEngine_UploadServer) error 
 			}
 
 		case *gepb.UploadRequest_VertexColumns:
-			// TODO: Phase 1 - handle column data
-			h.logger.Debug("vertex columns received (not implemented yet)")
+			chunk := payload.VertexColumns
+			data := columnChunkToData(chunk)
+			if err := h.buildStore.AddVertexColumn(buildID, chunk.GetName(), data); err != nil {
+				h.logger.Error("failed to add vertex column", "error", err, "name", chunk.GetName())
+				return status.Errorf(codes.Internal, "failed to add vertex column: %v", err)
+			}
+			h.logger.Debug("vertex column added",
+				"build_id", buildID,
+				"column_name", chunk.GetName(),
+				"length", data.Length(),
+			)
 
 		case *gepb.UploadRequest_EdgeColumns:
-			// TODO: Phase 1 - handle column data
-			h.logger.Debug("edge columns received (not implemented yet)")
+			chunk := payload.EdgeColumns
+			data := columnChunkToData(chunk)
+			if err := h.buildStore.AddEdgeColumn(buildID, chunk.GetName(), data); err != nil {
+				h.logger.Error("failed to add edge column", "error", err, "name", chunk.GetName())
+				return status.Errorf(codes.Internal, "failed to add edge column: %v", err)
+			}
+			h.logger.Debug("edge column added",
+				"build_id", buildID,
+				"column_name", chunk.GetName(),
+				"length", data.Length(),
+			)
 
 		case *gepb.UploadRequest_Finalize:
 			h.logger.Info("finalize marker received", "build_id", buildID)
@@ -216,11 +243,26 @@ func (h *GraphEngineHandler) PublishBuild(ctx context.Context, req *gepb.Publish
 
 	// Run batch artifacts if requested
 	artifacts := req.GetArtifacts()
-	if artifacts != nil && artifacts.GetComputeComponents() {
+
+	// Create a shared shim graph for batch artifacts if any are requested
+	var shimGraph *shim.Graph
+	if artifacts != nil && (artifacts.GetComputeComponents() || artifacts.GetComputeCommunities() || artifacts.GetComputeKcore() || artifacts.GetComputeBetweennessSampled()) {
+		var err error
+		shimGraph, err = createShimGraphForVersion(version)
+		if err != nil {
+			h.logger.Error("failed to create shim graph for artifacts", "error", err)
+		} else {
+			defer shimGraph.Close()
+		}
+	}
+
+	if shimGraph != nil && artifacts != nil && artifacts.GetComputeComponents() {
 		h.logger.Info("computing components artifact", "version_id", versionID)
+		compCfg := &service.ComponentsConfig{ShimGraph: shimGraph}
+
 		// Components will be computed when Run is called or as part of publish
 		// For now, we'll compute it here synchronously
-		result, err := service.ComputeComponents(version, true, nil) // weak components
+		result, err := service.ComputeComponents(version, true, compCfg) // weak components
 		if err != nil {
 			h.logger.Error("failed to compute components", "error", err)
 			// Continue anyway - components are optional
@@ -232,6 +274,104 @@ func (h *GraphEngineHandler) PublishBuild(ctx context.Context, req *gepb.Publish
 				h.logger.Info("components computed and stored",
 					"result_id", result.ID,
 					"num_components", countUnique(result.MembershipU32),
+				)
+			}
+		}
+	}
+
+	// Compute communities if requested
+	if shimGraph != nil && artifacts != nil && artifacts.GetComputeCommunities() {
+		h.logger.Info("computing communities artifact", "version_id", versionID)
+		commShimCfg := &service.CommunitiesShimConfig{UseShim: true, ShimGraph: shimGraph}
+		commConfig := service.DefaultCommunitiesConfig()
+
+		commResult, err := service.ComputeCommunities(ctx, version, nil, commConfig, commShimCfg)
+		if err != nil {
+			h.logger.Error("failed to compute communities", "error", err)
+		} else {
+			// Attach communities to version for COMMUNITY_AWARE corridor
+			version.SetCommunities(commResult.Membership, commResult.NumCommunities)
+
+			// Store result for caching
+			paramsHash := service.HashCommunitiesParams(commConfig.Algorithm.String(), commConfig.Resolution, "")
+			algoResult := service.NewAlgoResult(version.ID, service.AlgoKindCommunities, paramsHash)
+			algoResult.MembershipU32 = commResult.Membership
+			algoResult.Meta["num_communities"] = fmt.Sprintf("%d", commResult.NumCommunities)
+			algoResult.Meta["modularity"] = fmt.Sprintf("%.6f", commResult.Modularity)
+			algoResult.Meta["algorithm"] = commConfig.Algorithm.String()
+			algoResult.Meta["source"] = "batch_artifact"
+
+			if err := h.resultStore.Store(algoResult); err != nil {
+				h.logger.Warn("failed to store communities result", "error", err)
+			} else {
+				h.logger.Info("communities computed and stored",
+					"result_id", algoResult.ID,
+					"num_communities", commResult.NumCommunities,
+					"modularity", commResult.Modularity,
+				)
+			}
+		}
+	}
+
+	// Compute k-core if requested
+	if shimGraph != nil && artifacts != nil && artifacts.GetComputeKcore() {
+		h.logger.Info("computing k-core artifact", "version_id", versionID)
+		kcoreConfig := service.DefaultKCoreConfig()
+		kcoreShimCfg := &service.KCoreShimConfig{ShimGraph: shimGraph}
+
+		kcoreResult, err := service.ComputeKCore(ctx, version, nil, kcoreConfig, kcoreShimCfg)
+		if err != nil {
+			h.logger.Error("failed to compute k-core", "error", err)
+		} else {
+			// Attach k-core to version
+			version.SetKCore(kcoreResult.Coreness, kcoreResult.MaxCore)
+
+			// Store result for caching
+			paramsHash := service.HashParams("kcore", version.ID)
+			algoResult := service.NewAlgoResult(version.ID, service.AlgoKindKCore, paramsHash)
+			algoResult.CorenessU32 = kcoreResult.Coreness
+			algoResult.Meta["max_core"] = fmt.Sprintf("%d", kcoreResult.MaxCore)
+			algoResult.Meta["source"] = "batch_artifact"
+
+			if err := h.resultStore.Store(algoResult); err != nil {
+				h.logger.Warn("failed to store k-core result", "error", err)
+			} else {
+				h.logger.Info("k-core computed and stored",
+					"result_id", algoResult.ID,
+					"max_core", kcoreResult.MaxCore,
+				)
+			}
+		}
+	}
+
+	// Compute sampled betweenness centrality if requested
+	if shimGraph != nil && artifacts != nil && artifacts.GetComputeBetweennessSampled() {
+		h.logger.Info("computing sampled betweenness artifact", "version_id", versionID)
+		betwConfig := service.DefaultBetweennessConfig()
+		betwConfig.SampleSize = 100 // Use sampling for batch artifact
+		betwShimCfg := &service.BetweennessShimConfig{ShimGraph: shimGraph}
+
+		betwResult, err := service.ComputeBetweenness(ctx, version, nil, betwConfig, betwShimCfg)
+		if err != nil {
+			h.logger.Error("failed to compute betweenness", "error", err)
+		} else {
+			// Attach betweenness to version
+			version.SetBetweenness(betwResult.Scores)
+
+			// Store result for caching
+			paramsHash := service.HashParams("betweenness", betwConfig.SampleSize, betwConfig.Normalized, version.ID)
+			algoResult := service.NewAlgoResult(version.ID, service.AlgoKindBetweenness, paramsHash)
+			algoResult.BetweennessF64 = betwResult.Scores
+			algoResult.Meta["sample_size"] = fmt.Sprintf("%d", betwConfig.SampleSize)
+			algoResult.Meta["normalized"] = fmt.Sprintf("%t", betwConfig.Normalized)
+			algoResult.Meta["source"] = "batch_artifact"
+
+			if err := h.resultStore.Store(algoResult); err != nil {
+				h.logger.Warn("failed to store betweenness result", "error", err)
+			} else {
+				h.logger.Info("betweenness computed and stored",
+					"result_id", algoResult.ID,
+					"sample_size", betwConfig.SampleSize,
 				)
 			}
 		}
@@ -270,6 +410,83 @@ func countUnique(arr []uint32) int {
 		seen[v] = struct{}{}
 	}
 	return len(seen)
+}
+
+// columnChunkToData converts a protobuf ColumnChunk to a service ColumnData.
+func columnChunkToData(chunk *gepb.ColumnChunk) *service.ColumnData {
+	data := &service.ColumnData{
+		Name: chunk.GetName(),
+	}
+
+	// Map protobuf ColumnType to service ColumnType and extract data
+	switch chunk.GetType() {
+	case gepb.ColumnType_COL_BOOL:
+		data.Type = service.ColumnTypeBool
+		data.BoolVal = chunk.GetVBool()
+	case gepb.ColumnType_COL_U32:
+		data.Type = service.ColumnTypeU32
+		data.U32Val = chunk.GetVU32()
+	case gepb.ColumnType_COL_U64:
+		data.Type = service.ColumnTypeU64
+		data.U64Val = chunk.GetVU64()
+	case gepb.ColumnType_COL_F32:
+		data.Type = service.ColumnTypeF32
+		data.F32Val = chunk.GetVF32()
+	case gepb.ColumnType_COL_F64:
+		data.Type = service.ColumnTypeF64
+		data.F64Val = chunk.GetVF64()
+	case gepb.ColumnType_COL_STRING:
+		data.Type = service.ColumnTypeString
+		data.StrVal = chunk.GetVString()
+	}
+
+	return data
+}
+
+// protoModeToString converts a NeighborhoodSpec_Mode to a string.
+func protoModeToString(m gepb.NeighborhoodSpec_Mode) string {
+	switch m {
+	case gepb.NeighborhoodSpec_MODE_OUT:
+		return "out"
+	case gepb.NeighborhoodSpec_MODE_IN:
+		return "in"
+	default:
+		return "all"
+	}
+}
+
+// protoModeToBFSMode converts a NeighborhoodSpec_Mode to a service.BFSMode.
+func protoModeToBFSMode(m gepb.NeighborhoodSpec_Mode) service.BFSMode {
+	switch m {
+	case gepb.NeighborhoodSpec_MODE_OUT:
+		return service.BFSModeOut
+	case gepb.NeighborhoodSpec_MODE_IN:
+		return service.BFSModeIn
+	default:
+		return service.BFSModeAll
+	}
+}
+
+// protoModeToNeighborhoodMode converts a NeighborhoodSpec_Mode to a service.NeighborhoodMode.
+func protoModeToNeighborhoodMode(m gepb.NeighborhoodSpec_Mode) service.NeighborhoodMode {
+	switch m {
+	case gepb.NeighborhoodSpec_MODE_OUT:
+		return service.NeighborhoodModeOut
+	case gepb.NeighborhoodSpec_MODE_IN:
+		return service.NeighborhoodModeIn
+	default:
+		return service.NeighborhoodModeAll
+	}
+}
+
+// protoMethodToCommunityAlgorithm converts a CommunitiesSpec_Method to a service.CommunityAlgorithm.
+func protoMethodToCommunityAlgorithm(m gepb.CommunitiesSpec_Method) service.CommunityAlgorithm {
+	switch m {
+	case gepb.CommunitiesSpec_LOUVAIN:
+		return service.CommunityAlgorithmLouvain
+	default:
+		return service.CommunityAlgorithmLeiden
+	}
 }
 
 // CreateView creates a filtered view of a graph.
@@ -387,10 +604,18 @@ func (h *GraphEngineHandler) Run(ctx context.Context, req *gepb.RunRequest) (*ge
 		cacheSpan.AddTag("hit", "false")
 		metrics.IncCacheMisses("components")
 
+		// Create shim graph for components computation
+		shimGraph, err := createShimGraphForVersion(version)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to create shim graph: %v", err)
+		}
+		defer shimGraph.Close()
+		compCfg := &service.ComponentsConfig{ShimGraph: shimGraph}
+
 		// Compute
 		computeSpan := service.NewTraceSpan("compute")
 		computeStart := time.Now()
-		result, err = service.ComputeComponents(version, weak, nil)
+		result, err = service.ComputeComponents(version, weak, compCfg)
 		computeSpan.End()
 		if err != nil {
 			return nil, status.Errorf(codes.Internal, "failed to compute components: %v", err)
@@ -428,6 +653,14 @@ func (h *GraphEngineHandler) Run(ctx context.Context, req *gepb.RunRequest) (*ge
 		cacheSpan.AddTag("hit", "false")
 		metrics.IncCacheMisses("shortest_path")
 
+		// Create shim graph for shortest path computation
+		shimGraph, err := createShimGraphForVersion(version)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to create shim graph: %v", err)
+		}
+		defer shimGraph.Close()
+		spCfg := &service.ShortestPathConfig{ShimGraph: shimGraph}
+
 		// Compute
 		computeSpan := service.NewTraceSpan("compute")
 		computeStart := time.Now()
@@ -439,7 +672,7 @@ func (h *GraphEngineHandler) Run(ctx context.Context, req *gepb.RunRequest) (*ge
 			weighted,
 			spSpec.GetReturnEdges(),
 			spSpec.GetReturnVertices(),
-			nil, // use default config
+			spCfg,
 		)
 		computeSpan.End()
 		if err != nil {
@@ -520,6 +753,14 @@ func (h *GraphEngineHandler) Run(ctx context.Context, req *gepb.RunRequest) (*ge
 			kspConfig.PerPathTimeout = kspSpec.GetPerPathTimeout().AsDuration()
 		}
 
+		// Create shim graph for KSP computation
+		shimGraph, err := createShimGraphForVersion(version)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to create shim graph: %v", err)
+		}
+		defer shimGraph.Close()
+		kspShimCfg := &service.KSPShimConfig{ShimGraph: shimGraph}
+
 		// Compute
 		computeSpan := service.NewTraceSpan("compute")
 		computeStart := time.Now()
@@ -530,7 +771,7 @@ func (h *GraphEngineHandler) Run(ctx context.Context, req *gepb.RunRequest) (*ge
 			kspSpec.GetSourceU64(),
 			kspSpec.GetTargetU64(),
 			kspConfig,
-			nil, // use default shim config
+			kspShimCfg,
 		)
 		computeSpan.End()
 		if err != nil {
@@ -618,18 +859,249 @@ func (h *GraphEngineHandler) Run(ctx context.Context, req *gepb.RunRequest) (*ge
 		result.Meta["num_targets"] = fmt.Sprintf("%d", distResult.NumTargets)
 
 	case *gepb.AlgoSpec_Bfs:
-		// BFS is similar to shortest path but always unweighted
 		bfsSpec := spec.Bfs
 		h.logger.Info("running BFS algorithm",
 			"version_id", version.ID,
 			"source", bfsSpec.GetSourceU64(),
 			"max_depth", bfsSpec.GetMaxDepth(),
+			"mode", bfsSpec.GetMode(),
 		)
 
-		// For BFS, we use it as neighborhood exploration
-		// which is already implemented in the View system
-		// Return the reachable vertices as the result
-		return nil, status.Errorf(codes.Unimplemented, "bfs result format pending - use CreateView with neighborhood spec instead")
+		// Build cache key
+		viewHash := ""
+		if view != nil {
+			viewHash = view.SpecHash
+		}
+		paramsHash := service.HashBFSParams(
+			bfsSpec.GetSourceU64(),
+			bfsSpec.GetMaxDepth(),
+			protoModeToString(bfsSpec.GetMode()),
+			viewHash,
+		)
+
+		// Check cache
+		cacheSpan := service.NewTraceSpan("cache_lookup")
+		if req.GetAllowCache() {
+			if cached, found := h.resultStore.GetByKey(version.ID, service.AlgoKindBFS, paramsHash); found {
+				cacheSpan.End()
+				cacheSpan.AddTag("hit", "true")
+				h.logger.Info("cache hit for bfs", "result_id", cached.ID)
+				metrics.IncCacheHits("bfs")
+				return &gepb.RunResponse{
+					Job: &gepb.JobRef{JobId: cached.ID},
+				}, nil
+			}
+		}
+		cacheSpan.End()
+		cacheSpan.AddTag("hit", "false")
+		metrics.IncCacheMisses("bfs")
+
+		// Create shim graph for BFS computation
+		shimGraph, err := createShimGraphForVersion(version)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to create shim graph: %v", err)
+		}
+		defer shimGraph.Close()
+		bfsShimCfg := &service.BFSShimConfig{ShimGraph: shimGraph}
+
+		// Build BFS config
+		bfsConfig := &service.BFSConfig{
+			MaxDepth:          bfsSpec.GetMaxDepth(),
+			Mode:              protoModeToBFSMode(bfsSpec.GetMode()),
+			ReturnExternalIDs: true,
+		}
+
+		// Compute BFS
+		computeSpan := service.NewTraceSpan("compute")
+		computeStart := time.Now()
+		bfsResult, err := service.ComputeBFS(
+			ctx,
+			version,
+			view,
+			bfsSpec.GetSourceU64(),
+			bfsConfig,
+			bfsShimCfg,
+		)
+		computeSpan.End()
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to compute bfs: %v", err)
+		}
+		metrics.RecordAlgoDuration("bfs", time.Since(computeStart).Seconds())
+
+		// Build result
+		result = service.NewAlgoResult(version.ID, service.AlgoKindBFS, paramsHash)
+		result.AddSpan(cacheSpan)
+		result.AddSpan(computeSpan)
+		result.VerticesU64 = bfsResult.VisitedExternal
+		result.Meta["source"] = bfsResult.Meta["source"]
+		result.Meta["mode"] = bfsResult.Meta["mode"]
+		result.Meta["num_visited"] = fmt.Sprintf("%d", bfsResult.NumVisited)
+		result.Meta["max_depth_reached"] = fmt.Sprintf("%d", bfsResult.MaxDepthReached)
+
+	case *gepb.AlgoSpec_Neighborhood:
+		neighSpec := spec.Neighborhood
+		h.logger.Info("running neighborhood algorithm",
+			"version_id", version.ID,
+			"num_seeds", len(neighSpec.GetSeedsU64()),
+			"hops", neighSpec.GetHops(),
+			"mode", neighSpec.GetMode(),
+		)
+
+		// Build cache key
+		viewHash := ""
+		if view != nil {
+			viewHash = view.SpecHash
+		}
+		paramsHash := service.HashNeighborhoodParams(
+			neighSpec.GetSeedsU64(),
+			neighSpec.GetHops(),
+			protoModeToString(neighSpec.GetMode()),
+			viewHash,
+		)
+
+		// Check cache
+		cacheSpan := service.NewTraceSpan("cache_lookup")
+		if req.GetAllowCache() {
+			if cached, found := h.resultStore.GetByKey(version.ID, service.AlgoKindNeighborhood, paramsHash); found {
+				cacheSpan.End()
+				cacheSpan.AddTag("hit", "true")
+				h.logger.Info("cache hit for neighborhood", "result_id", cached.ID)
+				metrics.IncCacheHits("neighborhood")
+				return &gepb.RunResponse{
+					Job: &gepb.JobRef{JobId: cached.ID},
+				}, nil
+			}
+		}
+		cacheSpan.End()
+		cacheSpan.AddTag("hit", "false")
+		metrics.IncCacheMisses("neighborhood")
+
+		// Create shim graph for neighborhood computation
+		shimGraph, err := createShimGraphForVersion(version)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to create shim graph: %v", err)
+		}
+		defer shimGraph.Close()
+		neighShimCfg := &service.NeighborhoodShimConfig{ShimGraph: shimGraph}
+
+		// Build neighborhood config
+		neighConfig := &service.NeighborhoodConfig{
+			Hops:              neighSpec.GetHops(),
+			Mode:              protoModeToNeighborhoodMode(neighSpec.GetMode()),
+			ReturnExternalIDs: true,
+		}
+
+		// Compute neighborhood
+		computeSpan := service.NewTraceSpan("compute")
+		computeStart := time.Now()
+		neighResult, err := service.ComputeNeighborhood(
+			ctx,
+			version,
+			view,
+			neighSpec.GetSeedsU64(),
+			neighConfig,
+			neighShimCfg,
+		)
+		computeSpan.End()
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to compute neighborhood: %v", err)
+		}
+		metrics.RecordAlgoDuration("neighborhood", time.Since(computeStart).Seconds())
+
+		// Build result
+		result = service.NewAlgoResult(version.ID, service.AlgoKindNeighborhood, paramsHash)
+		result.AddSpan(cacheSpan)
+		result.AddSpan(computeSpan)
+		result.VerticesU64 = neighResult.VerticesExternal
+		result.Meta["source"] = neighResult.Meta["source"]
+		result.Meta["mode"] = neighResult.Meta["mode"]
+		result.Meta["hops"] = neighResult.Meta["hops"]
+		result.Meta["num_vertices"] = fmt.Sprintf("%d", neighResult.NumVertices)
+
+	case *gepb.AlgoSpec_Communities:
+		commSpec := spec.Communities
+		h.logger.Info("running communities algorithm",
+			"version_id", version.ID,
+			"method", commSpec.GetMethod(),
+			"resolution", commSpec.GetResolution(),
+		)
+
+		// Build cache key
+		viewHash := ""
+		if view != nil {
+			viewHash = view.SpecHash
+		}
+		algorithm := protoMethodToCommunityAlgorithm(commSpec.GetMethod())
+		resolution := commSpec.GetResolution()
+		if resolution <= 0 {
+			resolution = 1.0
+		}
+		paramsHash := service.HashCommunitiesParams(
+			algorithm.String(),
+			resolution,
+			viewHash,
+		)
+
+		// Check cache
+		cacheSpan := service.NewTraceSpan("cache_lookup")
+		if req.GetAllowCache() {
+			if cached, found := h.resultStore.GetByKey(version.ID, service.AlgoKindCommunities, paramsHash); found {
+				cacheSpan.End()
+				cacheSpan.AddTag("hit", "true")
+				h.logger.Info("cache hit for communities", "result_id", cached.ID)
+				metrics.IncCacheHits("communities")
+				return &gepb.RunResponse{
+					Job: &gepb.JobRef{JobId: cached.ID},
+				}, nil
+			}
+		}
+		cacheSpan.End()
+		cacheSpan.AddTag("hit", "false")
+		metrics.IncCacheMisses("communities")
+
+		// Create shim graph for communities computation
+		shimGraph, err := createShimGraphForVersion(version)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to create shim graph: %v", err)
+		}
+		defer shimGraph.Close()
+		commShimCfg := &service.CommunitiesShimConfig{
+			UseShim:   true,
+			ShimGraph: shimGraph,
+		}
+
+		// Build communities config
+		commConfig := &service.CommunitiesConfig{
+			Algorithm:  algorithm,
+			Resolution: resolution,
+		}
+
+		// Compute communities
+		computeSpan := service.NewTraceSpan("compute")
+		computeStart := time.Now()
+		commResult, err := service.ComputeCommunities(
+			ctx,
+			version,
+			view,
+			commConfig,
+			commShimCfg,
+		)
+		computeSpan.End()
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to compute communities: %v", err)
+		}
+		metrics.RecordAlgoDuration("communities", time.Since(computeStart).Seconds())
+
+		// Build result
+		result = service.NewAlgoResult(version.ID, service.AlgoKindCommunities, paramsHash)
+		result.AddSpan(cacheSpan)
+		result.AddSpan(computeSpan)
+		result.MembershipU32 = commResult.Membership
+		result.Meta["source"] = commResult.Meta["source"]
+		result.Meta["algorithm"] = commResult.Meta["algorithm"]
+		result.Meta["resolution"] = commResult.Meta["resolution"]
+		result.Meta["num_communities"] = fmt.Sprintf("%d", commResult.NumCommunities)
+		result.Meta["modularity"] = fmt.Sprintf("%.6f", commResult.Modularity)
 
 	case *gepb.AlgoSpec_StMincut:
 		mincutSpec := spec.StMincut
@@ -656,6 +1128,14 @@ func (h *GraphEngineHandler) Run(ctx context.Context, req *gepb.RunRequest) (*ge
 		mincutCtx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
 
+		// Create shim graph for mincut computation
+		shimGraph, err := createShimGraphForVersion(version)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to create shim graph: %v", err)
+		}
+		defer shimGraph.Close()
+		mincutCfg := &service.MinCutConfig{ShimGraph: shimGraph}
+
 		// Compute mincut
 		computeSpan := service.NewTraceSpan("compute")
 		computeStart := time.Now()
@@ -667,7 +1147,7 @@ func (h *GraphEngineHandler) Run(ctx context.Context, req *gepb.RunRequest) (*ge
 			mincutSpec.GetTargetU64(),
 			useWeights,
 			service.DefaultMaxCorridorEdges,
-			nil, // use default config
+			mincutCfg,
 		)
 		computeSpan.End()
 		if err != nil {
@@ -707,6 +1187,14 @@ func (h *GraphEngineHandler) Run(ctx context.Context, req *gepb.RunRequest) (*ge
 			return nil, status.Errorf(codes.InvalidArgument, "invalid corridor spec: %v", err)
 		}
 
+		// Create shim graph for shortest path computation
+		shimGraph, err := createShimGraphForVersion(version)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to create shim graph: %v", err)
+		}
+		defer shimGraph.Close()
+		spCfg := &service.ShortestPathConfig{ShimGraph: shimGraph}
+
 		// Compute corridor
 		computeSpan := service.NewTraceSpan("compute")
 		computeStart := time.Now()
@@ -718,9 +1206,11 @@ func (h *GraphEngineHandler) Run(ctx context.Context, req *gepb.RunRequest) (*ge
 			corrSpec.GetMethod(),
 			corrSpec.GetHops(),
 			corrSpec.GetK(),
+			spCfg,
 		)
 		computeSpan.End()
 		if err != nil {
+			shimGraph.Close() // Close before returning error
 			return nil, status.Errorf(codes.Internal, "failed to compute corridor: %v", err)
 		}
 		metrics.RecordAlgoDuration("corridor", time.Since(computeStart).Seconds())
@@ -743,6 +1233,154 @@ func (h *GraphEngineHandler) Run(ctx context.Context, req *gepb.RunRequest) (*ge
 			result.PathVertices = corrResult.PathSummary.PathVertices
 			result.PathCost = corrResult.PathSummary.TotalCost
 		}
+
+	case *gepb.AlgoSpec_Kcore:
+		kcoreSpec := spec.Kcore
+		h.logger.Info("running k-core algorithm",
+			"version_id", version.ID,
+			"k", kcoreSpec.GetK(),
+		)
+
+		// Build cache key
+		viewHash := ""
+		if view != nil {
+			viewHash = view.SpecHash
+		}
+		paramsHash := service.HashKCoreParams(kcoreSpec.GetK(), viewHash)
+
+		// Check cache
+		cacheSpan := service.NewTraceSpan("cache_lookup")
+		if req.GetAllowCache() {
+			if cached, found := h.resultStore.GetByKey(version.ID, service.AlgoKindKCore, paramsHash); found {
+				cacheSpan.End()
+				cacheSpan.AddTag("hit", "true")
+				h.logger.Info("cache hit for k-core", "result_id", cached.ID)
+				metrics.IncCacheHits("kcore")
+				return &gepb.RunResponse{
+					Job: &gepb.JobRef{JobId: cached.ID},
+				}, nil
+			}
+		}
+		cacheSpan.End()
+		cacheSpan.AddTag("hit", "false")
+		metrics.IncCacheMisses("kcore")
+
+		// Create shim graph for k-core computation
+		shimGraph, err := createShimGraphForVersion(version)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to create shim graph: %v", err)
+		}
+		defer shimGraph.Close()
+		kcoreShimCfg := &service.KCoreShimConfig{ShimGraph: shimGraph}
+
+		// Build k-core config
+		kcoreConfig := &service.KCoreConfig{
+			K: kcoreSpec.GetK(),
+		}
+
+		// Compute k-core
+		computeSpan := service.NewTraceSpan("compute")
+		computeStart := time.Now()
+		kcoreResult, err := service.ComputeKCore(
+			ctx,
+			version,
+			view,
+			kcoreConfig,
+			kcoreShimCfg,
+		)
+		computeSpan.End()
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to compute k-core: %v", err)
+		}
+		metrics.RecordAlgoDuration("kcore", time.Since(computeStart).Seconds())
+
+		// Build result
+		result = service.NewAlgoResult(version.ID, service.AlgoKindKCore, paramsHash)
+		result.AddSpan(cacheSpan)
+		result.AddSpan(computeSpan)
+		result.CorenessU32 = kcoreResult.Coreness
+		result.MaxCore = kcoreResult.MaxCore
+		result.Meta["max_core"] = fmt.Sprintf("%d", kcoreResult.MaxCore)
+		result.Meta["k"] = fmt.Sprintf("%d", kcoreSpec.GetK())
+
+	case *gepb.AlgoSpec_Betweenness:
+		betwSpec := spec.Betweenness
+		h.logger.Info("running betweenness algorithm",
+			"version_id", version.ID,
+			"sample_size", betwSpec.GetSampleSize(),
+			"normalized", betwSpec.GetNormalized(),
+			"weight_column", betwSpec.GetWeightColumn(),
+		)
+
+		// Build cache key
+		viewHash := ""
+		if view != nil {
+			viewHash = view.SpecHash
+		}
+		paramsHash := service.HashBetweennessParams(
+			betwSpec.GetSampleSize(),
+			betwSpec.GetNormalized(),
+			betwSpec.GetWeightColumn(),
+			viewHash,
+		)
+
+		// Check cache
+		cacheSpan := service.NewTraceSpan("cache_lookup")
+		if req.GetAllowCache() {
+			if cached, found := h.resultStore.GetByKey(version.ID, service.AlgoKindBetweenness, paramsHash); found {
+				cacheSpan.End()
+				cacheSpan.AddTag("hit", "true")
+				h.logger.Info("cache hit for betweenness", "result_id", cached.ID)
+				metrics.IncCacheHits("betweenness")
+				return &gepb.RunResponse{
+					Job: &gepb.JobRef{JobId: cached.ID},
+				}, nil
+			}
+		}
+		cacheSpan.End()
+		cacheSpan.AddTag("hit", "false")
+		metrics.IncCacheMisses("betweenness")
+
+		// Create shim graph for betweenness computation
+		shimGraph, err := createShimGraphForVersion(version)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to create shim graph: %v", err)
+		}
+		defer shimGraph.Close()
+		betwShimCfg := &service.BetweennessShimConfig{ShimGraph: shimGraph}
+
+		// Build betweenness config
+		betwConfig := &service.BetweennessConfig{
+			SampleSize:   betwSpec.GetSampleSize(),
+			Normalized:   betwSpec.GetNormalized(),
+			WeightColumn: betwSpec.GetWeightColumn(),
+		}
+
+		// Compute betweenness
+		computeSpan := service.NewTraceSpan("compute")
+		computeStart := time.Now()
+		betwResult, err := service.ComputeBetweenness(
+			ctx,
+			version,
+			view,
+			betwConfig,
+			betwShimCfg,
+		)
+		computeSpan.End()
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to compute betweenness: %v", err)
+		}
+		metrics.RecordAlgoDuration("betweenness", time.Since(computeStart).Seconds())
+
+		// Build result
+		result = service.NewAlgoResult(version.ID, service.AlgoKindBetweenness, paramsHash)
+		result.AddSpan(cacheSpan)
+		result.AddSpan(computeSpan)
+		result.BetweennessF64 = betwResult.Scores
+		result.Meta["sample_size"] = fmt.Sprintf("%d", betwSpec.GetSampleSize())
+		result.Meta["normalized"] = fmt.Sprintf("%t", betwSpec.GetNormalized())
+		result.Meta["max_score"] = fmt.Sprintf("%.6f", betwResult.MaxScore)
+		result.Meta["min_score"] = fmt.Sprintf("%.6f", betwResult.MinScore)
 
 	default:
 		return nil, status.Errorf(codes.InvalidArgument, "unknown algorithm type")
@@ -793,10 +1431,24 @@ func (h *GraphEngineHandler) GetJob(ctx context.Context, req *gepb.GetJobRequest
 
 // CancelJob cancels a running job.
 func (h *GraphEngineHandler) CancelJob(ctx context.Context, req *gepb.CancelJobRequest) (*gepb.CancelJobResponse, error) {
-	h.logger.Info("CancelJob called", "job_id", req.GetJob().GetJobId())
+	jobID := req.GetJob().GetJobId()
+	h.logger.Info("CancelJob called", "job_id", jobID)
 
-	// TODO: Phase 1 - Implement job cancellation
-	return nil, status.Errorf(codes.Unimplemented, "CancelJob not implemented yet")
+	if jobID == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "job_id is required")
+	}
+
+	// Check if scheduler is available
+	if h.scheduler == nil {
+		h.logger.Warn("scheduler not configured, cannot cancel job")
+		return &gepb.CancelJobResponse{Canceled: false}, nil
+	}
+
+	// Attempt to cancel the job
+	canceled := h.scheduler.CancelJob(jobID)
+
+	h.logger.Info("CancelJob result", "job_id", jobID, "canceled", canceled)
+	return &gepb.CancelJobResponse{Canceled: canceled}, nil
 }
 
 // GetResult streams result data back to the client.
@@ -876,6 +1528,22 @@ func (h *GraphEngineHandler) GetResult(req *gepb.GetResultRequest, stream gepb.G
 			}
 		}
 
+	case service.AlgoKindBFS, service.AlgoKindNeighborhood:
+		// Send vertices array for BFS/Neighborhood results
+		if len(result.VerticesU64) > 0 {
+			chunk := &gepb.ResultChunk{
+				Payload: &gepb.ResultChunk_U64{
+					U64: &gepb.U64Buffer{
+						Name:   "vertices",
+						Values: result.VerticesU64,
+					},
+				},
+			}
+			if err := stream.Send(chunk); err != nil {
+				return status.Errorf(codes.Internal, "failed to send vertices: %v", err)
+			}
+		}
+
 	case service.AlgoKindSTMinCut:
 		// Send mincut result
 		chunk := &gepb.ResultChunk{
@@ -938,6 +1606,33 @@ func (h *GraphEngineHandler) GetResult(req *gepb.GetResultRequest, stream gepb.G
 				return status.Errorf(codes.Internal, "failed to send ksp path %d: %v", i, err)
 			}
 		}
+
+	case service.AlgoKindKCore:
+		// Send k-core result
+		chunk := &gepb.ResultChunk{
+			Payload: &gepb.ResultChunk_Kcore{
+				Kcore: &gepb.KCoreResult{
+					Coreness: result.CorenessU32,
+					MaxCore:  result.MaxCore,
+				},
+			},
+		}
+		if err := stream.Send(chunk); err != nil {
+			return status.Errorf(codes.Internal, "failed to send k-core: %v", err)
+		}
+
+	case service.AlgoKindBetweenness:
+		// Send betweenness result
+		chunk := &gepb.ResultChunk{
+			Payload: &gepb.ResultChunk_Betweenness{
+				Betweenness: &gepb.BetweennessResult{
+					Scores: result.BetweennessF64,
+				},
+			},
+		}
+		if err := stream.Send(chunk); err != nil {
+			return status.Errorf(codes.Internal, "failed to send betweenness: %v", err)
+		}
 	}
 
 	// Send done marker
@@ -956,6 +1651,64 @@ func (h *GraphEngineHandler) GetResult(req *gepb.GetResultRequest, stream gepb.G
 func (h *GraphEngineHandler) Release(ctx context.Context, req *gepb.ReleaseRequest) (*gepb.ReleaseResponse, error) {
 	h.logger.Info("Release called")
 
-	// TODO: Phase 1 - Implement resource release
-	return nil, status.Errorf(codes.Unimplemented, "Release not implemented yet")
+	switch target := req.GetTarget().(type) {
+	case *gepb.ReleaseRequest_View:
+		viewID := target.View.GetViewId()
+		if viewID == "" {
+			return nil, status.Errorf(codes.InvalidArgument, "view_id is required")
+		}
+
+		h.logger.Info("releasing view", "view_id", viewID)
+
+		// First, unpin the view (client is done with it)
+		if err := h.viewManager.ReleaseView(viewID); err != nil {
+			h.logger.Warn("failed to unpin view", "view_id", viewID, "error", err)
+			return nil, status.Errorf(codes.NotFound, "view not found: %s", viewID)
+		}
+
+		// Now try to delete the view (will succeed if no one else is using it)
+		err := h.viewManager.DeleteView(viewID)
+		if err != nil {
+			// If delete fails because view is still pinned by others, that's OK
+			// The view was still unpinned for this client
+			h.logger.Info("view unpinned but still in use by others", "view_id", viewID)
+			return &gepb.ReleaseResponse{Released: false}, nil
+		}
+
+		h.logger.Info("view released and deleted", "view_id", viewID)
+		return &gepb.ReleaseResponse{Released: true}, nil
+
+	case *gepb.ReleaseRequest_Result:
+		resultID := target.Result.GetResultId()
+		if resultID == "" {
+			return nil, status.Errorf(codes.InvalidArgument, "result_id is required")
+		}
+
+		h.logger.Info("releasing result", "result_id", resultID)
+
+		// Get the result to unpin it
+		result, err := h.resultStore.Get(resultID)
+		if err != nil {
+			h.logger.Warn("failed to get result for release", "result_id", resultID, "error", err)
+			return nil, status.Errorf(codes.NotFound, "result not found: %s", resultID)
+		}
+
+		// Unpin twice: once for the Get() call above, once for the client's release
+		result.Unpin()
+		result.Unpin()
+
+		// Now try to delete the result
+		err = h.resultStore.Delete(resultID)
+		if err != nil {
+			// If delete fails because result is still pinned by others, that's OK
+			h.logger.Info("result unpinned but still in use by others", "result_id", resultID)
+			return &gepb.ReleaseResponse{Released: false}, nil
+		}
+
+		h.logger.Info("result released and deleted", "result_id", resultID)
+		return &gepb.ReleaseResponse{Released: true}, nil
+
+	default:
+		return nil, status.Errorf(codes.InvalidArgument, "target must be specified (view or result)")
+	}
 }

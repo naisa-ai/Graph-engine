@@ -31,6 +31,10 @@ type GraphVersion struct {
 	EdgeKind   []uint32  // Edge type/kind (optional)
 	EdgeWeight []float32 // Edge weights (optional)
 
+	// Column data (indexed by column name)
+	VertexColumns map[string]*ColumnData
+	EdgeColumns   map[string]*ColumnData
+
 	// Schema definition
 	Schema *gepb.Schema
 	Labels map[string]string
@@ -38,6 +42,18 @@ type GraphVersion struct {
 	// Statistics
 	VCount uint64 // Number of vertices
 	ECount uint64 // Number of edges
+
+	// Precomputed artifacts (optional, set during PublishBuild with BatchArtifacts)
+	// Community membership (vertex index -> community ID)
+	CommunityMembership []uint32
+	NumCommunities      uint32
+
+	// K-Core decomposition (vertex index -> coreness value)
+	KCoreness []uint32
+	MaxCore   uint32
+
+	// Betweenness centrality scores (vertex index -> score)
+	BetweennessScores []float64
 
 	// Reference counting for RCU-style access
 	refCount int
@@ -50,12 +66,14 @@ type GraphVersion struct {
 // NewGraphVersion creates a new GraphVersion from a Build.
 func NewGraphVersion(id, graphName string, directed bool, build *Build) (*GraphVersion, error) {
 	gv := &GraphVersion{
-		ID:          id,
-		GraphName:   graphName,
-		Directed:    directed,
-		PublishedAt: time.Now(),
-		Labels:      build.Labels,
-		refCount:    0,
+		ID:            id,
+		GraphName:     graphName,
+		Directed:      directed,
+		PublishedAt:   time.Now(),
+		Labels:        build.Labels,
+		VertexColumns: make(map[string]*ColumnData),
+		EdgeColumns:   make(map[string]*ColumnData),
+		refCount:      0,
 	}
 
 	// Build node ID mapping
@@ -67,6 +85,9 @@ func NewGraphVersion(id, graphName string, directed bool, build *Build) (*GraphV
 	if err := gv.buildEdgeArrays(build); err != nil {
 		return nil, err
 	}
+
+	// Copy column data from build
+	gv.copyColumnData(build)
 
 	// Calculate statistics
 	gv.VCount = uint64(len(gv.indexToNodeID))
@@ -152,6 +173,69 @@ func (gv *GraphVersion) buildEdgeArrays(build *Build) error {
 	return nil
 }
 
+// copyColumnData copies column data from build to graph version.
+func (gv *GraphVersion) copyColumnData(build *Build) {
+	build.mu.RLock()
+	defer build.mu.RUnlock()
+
+	// Copy vertex columns
+	for name, col := range build.VertexColumns {
+		gv.VertexColumns[name] = copyColumnData(col)
+	}
+
+	// Copy edge columns
+	for name, col := range build.EdgeColumns {
+		gv.EdgeColumns[name] = copyColumnData(col)
+	}
+}
+
+// copyColumnData creates a deep copy of column data.
+func copyColumnData(src *ColumnData) *ColumnData {
+	if src == nil {
+		return nil
+	}
+
+	dst := &ColumnData{
+		Name: src.Name,
+		Type: src.Type,
+	}
+
+	switch src.Type {
+	case ColumnTypeBool:
+		if len(src.BoolVal) > 0 {
+			dst.BoolVal = make([]bool, len(src.BoolVal))
+			copy(dst.BoolVal, src.BoolVal)
+		}
+	case ColumnTypeU32:
+		if len(src.U32Val) > 0 {
+			dst.U32Val = make([]uint32, len(src.U32Val))
+			copy(dst.U32Val, src.U32Val)
+		}
+	case ColumnTypeU64:
+		if len(src.U64Val) > 0 {
+			dst.U64Val = make([]uint64, len(src.U64Val))
+			copy(dst.U64Val, src.U64Val)
+		}
+	case ColumnTypeF32:
+		if len(src.F32Val) > 0 {
+			dst.F32Val = make([]float32, len(src.F32Val))
+			copy(dst.F32Val, src.F32Val)
+		}
+	case ColumnTypeF64:
+		if len(src.F64Val) > 0 {
+			dst.F64Val = make([]float64, len(src.F64Val))
+			copy(dst.F64Val, src.F64Val)
+		}
+	case ColumnTypeString:
+		if len(src.StrVal) > 0 {
+			dst.StrVal = make([]string, len(src.StrVal))
+			copy(dst.StrVal, src.StrVal)
+		}
+	}
+
+	return dst
+}
+
 // GetNodeIndex returns the compact index for an external node ID.
 // Returns (index, true) if found, (0, false) if not found.
 func (gv *GraphVersion) GetNodeIndex(nodeID uint64) (uint32, bool) {
@@ -195,8 +279,47 @@ func (gv *GraphVersion) estimateMemory() uint64 {
 		total += uint64(len(gv.EdgeWeight)) * 4
 	}
 
+	// Column data
+	for _, col := range gv.VertexColumns {
+		total += estimateColumnMemory(col)
+	}
+	for _, col := range gv.EdgeColumns {
+		total += estimateColumnMemory(col)
+	}
+
 	// Struct overhead
 	total += uint64(unsafe.Sizeof(*gv))
+
+	return total
+}
+
+// estimateColumnMemory estimates memory usage of a column.
+func estimateColumnMemory(col *ColumnData) uint64 {
+	if col == nil {
+		return 0
+	}
+
+	var total uint64
+	// Base struct overhead
+	total += uint64(unsafe.Sizeof(*col))
+
+	switch col.Type {
+	case ColumnTypeBool:
+		total += uint64(len(col.BoolVal)) // 1 byte per bool
+	case ColumnTypeU32:
+		total += uint64(len(col.U32Val)) * 4
+	case ColumnTypeU64:
+		total += uint64(len(col.U64Val)) * 8
+	case ColumnTypeF32:
+		total += uint64(len(col.F32Val)) * 4
+	case ColumnTypeF64:
+		total += uint64(len(col.F64Val)) * 8
+	case ColumnTypeString:
+		// Estimate string memory: 16 bytes header + avg string length
+		for _, s := range col.StrVal {
+			total += 16 + uint64(len(s))
+		}
+	}
 
 	return total
 }
@@ -238,4 +361,103 @@ func (gv *GraphVersion) ToSummary() *gepb.GraphSummary {
 		Vcount:           gv.VCount,
 		Ecount:           gv.ECount,
 	}
+}
+
+// =============================================================================
+// Community Methods
+// =============================================================================
+
+// SetCommunities stores precomputed community membership data.
+func (gv *GraphVersion) SetCommunities(membership []uint32, numCommunities uint32) {
+	gv.CommunityMembership = membership
+	gv.NumCommunities = numCommunities
+}
+
+// GetVertexCommunity returns the community ID for a vertex by its index.
+// Returns (communityID, true) if found, (0, false) if not available.
+func (gv *GraphVersion) GetVertexCommunity(vertexIdx uint32) (uint32, bool) {
+	if gv.CommunityMembership == nil || int(vertexIdx) >= len(gv.CommunityMembership) {
+		return 0, false
+	}
+	return gv.CommunityMembership[vertexIdx], true
+}
+
+// HasCommunities returns true if community data is available.
+func (gv *GraphVersion) HasCommunities() bool {
+	return gv.CommunityMembership != nil && len(gv.CommunityMembership) > 0
+}
+
+// GetCommunityMembers returns all vertex indices belonging to a specific community.
+func (gv *GraphVersion) GetCommunityMembers(communityID uint32) []uint32 {
+	if !gv.HasCommunities() {
+		return nil
+	}
+	members := make([]uint32, 0)
+	for i, cid := range gv.CommunityMembership {
+		if cid == communityID {
+			members = append(members, uint32(i))
+		}
+	}
+	return members
+}
+
+// =============================================================================
+// K-Core Methods
+// =============================================================================
+
+// SetKCore stores precomputed k-core decomposition data.
+func (gv *GraphVersion) SetKCore(coreness []uint32, maxCore uint32) {
+	gv.KCoreness = coreness
+	gv.MaxCore = maxCore
+}
+
+// GetVertexCoreness returns the coreness value for a vertex by its index.
+// Returns (coreness, true) if found, (0, false) if not available.
+func (gv *GraphVersion) GetVertexCoreness(vertexIdx uint32) (uint32, bool) {
+	if gv.KCoreness == nil || int(vertexIdx) >= len(gv.KCoreness) {
+		return 0, false
+	}
+	return gv.KCoreness[vertexIdx], true
+}
+
+// HasKCore returns true if k-core data is available.
+func (gv *GraphVersion) HasKCore() bool {
+	return gv.KCoreness != nil && len(gv.KCoreness) > 0
+}
+
+// GetKCoreMembers returns all vertex indices with coreness >= k.
+func (gv *GraphVersion) GetKCoreMembers(k uint32) []uint32 {
+	if !gv.HasKCore() {
+		return nil
+	}
+	members := make([]uint32, 0)
+	for i, coreness := range gv.KCoreness {
+		if coreness >= k {
+			members = append(members, uint32(i))
+		}
+	}
+	return members
+}
+
+// =============================================================================
+// Betweenness Methods
+// =============================================================================
+
+// SetBetweenness stores precomputed betweenness centrality scores.
+func (gv *GraphVersion) SetBetweenness(scores []float64) {
+	gv.BetweennessScores = scores
+}
+
+// GetVertexBetweenness returns the betweenness centrality score for a vertex.
+// Returns (score, true) if found, (0.0, false) if not available.
+func (gv *GraphVersion) GetVertexBetweenness(vertexIdx uint32) (float64, bool) {
+	if gv.BetweennessScores == nil || int(vertexIdx) >= len(gv.BetweennessScores) {
+		return 0.0, false
+	}
+	return gv.BetweennessScores[vertexIdx], true
+}
+
+// HasBetweenness returns true if betweenness data is available.
+func (gv *GraphVersion) HasBetweenness() bool {
+	return gv.BetweennessScores != nil && len(gv.BetweennessScores) > 0
 }

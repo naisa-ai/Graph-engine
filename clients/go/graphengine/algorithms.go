@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025 Naisa AI, Inc.
+
 package graphengine
 
 import (
@@ -405,6 +408,120 @@ func (c *Client) Neighborhood(ctx context.Context, graph *gepb.GraphRef, seeds [
 }
 
 // =============================================================================
+// K-Core and Betweenness Algorithms
+// =============================================================================
+
+// KCoreResult represents the result of k-core decomposition.
+type KCoreResult struct {
+	Coreness []uint32
+	MaxCore  uint32
+}
+
+// BetweennessResult represents the result of betweenness centrality.
+type BetweennessResult struct {
+	Scores []float64
+}
+
+// KCore computes the k-core decomposition of the graph.
+func (c *Client) KCore(ctx context.Context, graph *gepb.GraphRef) (*KCoreResult, error) {
+	return c.KCoreWithK(ctx, graph, 0)
+}
+
+// KCoreWithK computes k-core decomposition with a specific k value.
+// If k=0, computes full decomposition (coreness for all vertices).
+func (c *Client) KCoreWithK(ctx context.Context, graph *gepb.GraphRef, k uint32) (*KCoreResult, error) {
+	req := &gepb.RunRequest{
+		Target: &gepb.RunRequest_Graph{Graph: graph},
+		Algo: &gepb.AlgoSpec{
+			Kind: &gepb.AlgoSpec_Kcore{
+				Kcore: &gepb.KCoreSpec{
+					K: k,
+				},
+			},
+		},
+	}
+
+	result, err := c.RunAndWait(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	return c.collectKCoreResult(ctx, result)
+}
+
+// KCoreOnView computes k-core decomposition on a view.
+func (c *Client) KCoreOnView(ctx context.Context, view *gepb.ViewRef, k uint32) (*KCoreResult, error) {
+	req := &gepb.RunRequest{
+		Target: &gepb.RunRequest_View{View: view},
+		Algo: &gepb.AlgoSpec{
+			Kind: &gepb.AlgoSpec_Kcore{
+				Kcore: &gepb.KCoreSpec{
+					K: k,
+				},
+			},
+		},
+	}
+
+	result, err := c.RunAndWait(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	return c.collectKCoreResult(ctx, result)
+}
+
+// Betweenness computes betweenness centrality for all vertices.
+func (c *Client) Betweenness(ctx context.Context, graph *gepb.GraphRef) (*BetweennessResult, error) {
+	return c.BetweennessWithParams(ctx, graph, 0, false, "")
+}
+
+// BetweennessWithParams computes betweenness centrality with custom parameters.
+func (c *Client) BetweennessWithParams(ctx context.Context, graph *gepb.GraphRef, sampleSize uint32, normalized bool, weightColumn string) (*BetweennessResult, error) {
+	req := &gepb.RunRequest{
+		Target: &gepb.RunRequest_Graph{Graph: graph},
+		Algo: &gepb.AlgoSpec{
+			Kind: &gepb.AlgoSpec_Betweenness{
+				Betweenness: &gepb.BetweennessSpec{
+					SampleSize:   sampleSize,
+					Normalized:   normalized,
+					WeightColumn: weightColumn,
+				},
+			},
+		},
+	}
+
+	result, err := c.RunAndWait(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	return c.collectBetweennessResult(ctx, result)
+}
+
+// BetweennessOnView computes betweenness centrality on a view.
+func (c *Client) BetweennessOnView(ctx context.Context, view *gepb.ViewRef, sampleSize uint32, normalized bool, weightColumn string) (*BetweennessResult, error) {
+	req := &gepb.RunRequest{
+		Target: &gepb.RunRequest_View{View: view},
+		Algo: &gepb.AlgoSpec{
+			Kind: &gepb.AlgoSpec_Betweenness{
+				Betweenness: &gepb.BetweennessSpec{
+					SampleSize:   sampleSize,
+					Normalized:   normalized,
+					WeightColumn: weightColumn,
+				},
+			},
+		},
+	}
+
+	result, err := c.RunAndWait(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	return c.collectBetweennessResult(ctx, result)
+}
+
+// =============================================================================
 // Result Collection Helpers
 // =============================================================================
 
@@ -608,6 +725,55 @@ func (c *Client) collectU64Result(ctx context.Context, result *gepb.ResultRef, n
 	}
 
 	return values, nil
+}
+
+func (c *Client) collectKCoreResult(ctx context.Context, result *gepb.ResultRef) (*KCoreResult, error) {
+	iter, err := c.GetResultStream(ctx, result)
+	if err != nil {
+		return nil, err
+	}
+
+	kc := &KCoreResult{}
+	for {
+		chunk, err := iter.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		if kcoreRes := chunk.GetKcore(); kcoreRes != nil {
+			kc.Coreness = kcoreRes.Coreness
+			kc.MaxCore = kcoreRes.MaxCore
+		}
+	}
+
+	return kc, nil
+}
+
+func (c *Client) collectBetweennessResult(ctx context.Context, result *gepb.ResultRef) (*BetweennessResult, error) {
+	iter, err := c.GetResultStream(ctx, result)
+	if err != nil {
+		return nil, err
+	}
+
+	br := &BetweennessResult{}
+	for {
+		chunk, err := iter.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+
+		if betwRes := chunk.GetBetweenness(); betwRes != nil {
+			br.Scores = betwRes.Scores
+		}
+	}
+
+	return br, nil
 }
 
 // =============================================================================

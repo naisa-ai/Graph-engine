@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025 Naisa AI, Inc.
+
 syntax = "proto3";
 
 package graphengine.v1;
@@ -336,6 +339,10 @@ message AlgoSpec {
     STMinCutSpec st_mincut = 20;
 
     CorridorSpec corridor = 30;
+
+    // New algorithms
+    KCoreSpec kcore = 40;
+    BetweennessSpec betweenness = 41;
   }
 }
 
@@ -419,6 +426,24 @@ message CorridorSpec {
   uint32 k = 5;      // if KSP_HULL
 }
 
+message KCoreSpec {
+  // If 0, compute full k-core decomposition (coreness for all vertices).
+  // If > 0, filter to vertices with coreness >= k.
+  uint32 k = 1;
+}
+
+message BetweennessSpec {
+  // Number of source vertices to sample (0 = all vertices).
+  // Sampling significantly speeds up computation for large graphs.
+  uint32 sample_size = 1;
+
+  // Whether to normalize scores by graph size.
+  bool normalized = 2;
+
+  // Optional edge weight column (empty = unweighted).
+  string weight_column = 3;
+}
+
 // =============================================================================
 // Jobs / Results
 // =============================================================================
@@ -475,6 +500,10 @@ message ResultChunk {
     STMinCutResult st_mincut = 21;
     CorridorResult corridor = 22;
 
+    // New result types
+    KCoreResult kcore = 23;
+    BetweennessResult betweenness = 24;
+
     // Terminal marker
     bool done = 99;
   }
@@ -523,6 +552,19 @@ message STMinCutResult {
 message CorridorResult {
   ViewRef view = 1; // corridor view handle
   map<string, string> meta = 2;
+}
+
+message KCoreResult {
+  // Coreness value per vertex (indexed by vertex index).
+  repeated uint32 coreness = 1;
+
+  // Maximum k found (highest coreness value).
+  uint32 max_core = 2;
+}
+
+message BetweennessResult {
+  // Betweenness centrality score per vertex (indexed by vertex index).
+  repeated double scores = 1;
 }
 
 // =============================================================================

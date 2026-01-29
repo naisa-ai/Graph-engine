@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2025 Naisa AI, Inc.
+
 """E2E tests for the Graph-engine service using the Python client library.
 
 This tests the same APIs as e2e/client but uses the high-level Python client library.
@@ -414,6 +417,38 @@ def test_run_communities(client: GraphEngineClient) -> bool:
     return True
 
 
+def test_run_kcore(client: GraphEngineClient) -> bool:
+    """Test KCore algorithm."""
+    global graph_ref
+    if graph_ref is None:
+        log.error("no graph reference from previous test")
+        return False
+    
+    result = client.k_core(graph_ref)
+    if len(result.coreness) != 10:
+        log.error(f"expected 10 coreness values, got {len(result.coreness)}")
+        return False
+    
+    log.info(f"  KCore: {len(result.coreness)} vertices, max_core={result.max_core}")
+    return True
+
+
+def test_run_betweenness(client: GraphEngineClient) -> bool:
+    """Test Betweenness algorithm."""
+    global graph_ref
+    if graph_ref is None:
+        log.error("no graph reference from previous test")
+        return False
+    
+    result = client.betweenness(graph_ref)
+    if len(result.scores) != 10:
+        log.error(f"expected 10 betweenness scores, got {len(result.scores)}")
+        return False
+    
+    log.info(f"  Betweenness: {len(result.scores)} scores computed")
+    return True
+
+
 def test_cancel_job(client: GraphEngineClient) -> bool:
     """Test CancelJob API."""
     # Note: Without direct access to job refs from the high-level API,
@@ -496,6 +531,9 @@ def main():
         ("RunBFS", test_run_bfs),
         ("RunNeighborhood", test_run_neighborhood),
         ("RunCommunities", test_run_communities),
+        # Phase 5: New algorithms
+        ("RunKCore", test_run_kcore),
+        ("RunBetweenness", test_run_betweenness),
         # Resource management tests
         ("CancelJob", test_cancel_job),
         ("Release", test_release),

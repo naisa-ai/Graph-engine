@@ -1,5 +1,6 @@
 # E2E test client using Go client library
-FROM golang:1.21-alpine AS builder
+ARG BASE_IMAGE=graph-engine-e2e-go-base:latest
+FROM ${BASE_IMAGE} AS builder
 
 WORKDIR /build
 
@@ -14,6 +15,7 @@ WORKDIR /build/e2e/go-client
 RUN go mod tidy && go build -o /e2e-go-client .
 
 # Final stage
-FROM alpine:3.18
+FROM alpine:3.21
+RUN apk --no-cache add ca-certificates
 COPY --from=builder /e2e-go-client /e2e-go-client
 CMD ["/e2e-go-client"]

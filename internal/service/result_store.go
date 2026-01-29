@@ -56,8 +56,11 @@ const (
 	AlgoKindKSP          AlgoKind = "k_shortest_paths"
 	AlgoKindDistances    AlgoKind = "distances"
 	AlgoKindBFS          AlgoKind = "bfs"
+	AlgoKindNeighborhood AlgoKind = "neighborhood"
 	AlgoKindSTMinCut     AlgoKind = "st_mincut"
 	AlgoKindCorridor     AlgoKind = "corridor"
+	AlgoKindKCore        AlgoKind = "kcore"
+	AlgoKindBetweenness  AlgoKind = "betweenness"
 )
 
 // AlgoResult represents the result of an algorithm execution.
@@ -77,11 +80,19 @@ type AlgoResult struct {
 	PathEdges     []uint64  // For shortest path
 	PathCost      float64   // For shortest path
 	DistancesF64  []float64 // For distances
+	VerticesU64   []uint64  // For BFS/Neighborhood result vertices
 	CutValue      float64   // For st_mincut
 	CutEdges      []uint64  // For st_mincut
 
 	// K-shortest paths results
 	KSPPaths []*KSPPath // For k_shortest_paths
+
+	// K-Core results
+	CorenessU32 []uint32 // Coreness value per vertex
+	MaxCore     uint32   // Maximum k found
+
+	// Betweenness centrality results
+	BetweennessF64 []float64 // Betweenness score per vertex
 
 	// Trace spans for observability
 	Spans []*TraceSpan
@@ -175,6 +186,7 @@ func (r *AlgoResult) EstimateMemory() uint64 {
 	total += uint64(len(r.PathVertices)) * 8
 	total += uint64(len(r.PathEdges)) * 8
 	total += uint64(len(r.DistancesF64)) * 8
+	total += uint64(len(r.VerticesU64)) * 8
 	total += uint64(len(r.CutEdges)) * 8
 
 	// KSP paths
@@ -184,6 +196,12 @@ func (r *AlgoResult) EstimateMemory() uint64 {
 		total += 8 // Cost float64
 		total += uint64(unsafe.Sizeof(*p))
 	}
+
+	// K-Core data
+	total += uint64(len(r.CorenessU32)) * 4
+
+	// Betweenness data
+	total += uint64(len(r.BetweennessF64)) * 8
 
 	// Struct overhead
 	total += uint64(unsafe.Sizeof(*r))
@@ -216,6 +234,9 @@ type ResultStore struct {
 	maxMemory   uint64
 	ttl         time.Duration
 	totalMemory uint64
+
+	// Shutdown
+	stopCh chan struct{}
 }
 
 // NewResultStore creates a new ResultStore.
@@ -226,12 +247,18 @@ func NewResultStore(maxItems int, maxMemory uint64, ttl time.Duration) *ResultSt
 		maxItems:   maxItems,
 		maxMemory:  maxMemory,
 		ttl:        ttl,
+		stopCh:     make(chan struct{}),
 	}
 
 	// Start background cleanup
 	go rs.cleanupLoop()
 
 	return rs
+}
+
+// Close stops the background cleanup goroutine.
+func (rs *ResultStore) Close() {
+	close(rs.stopCh)
 }
 
 // Store adds a result to the store.
@@ -317,7 +344,9 @@ func HashParams(params ...interface{}) string {
 func (rs *ResultStore) evictIfNeeded(newBytes uint64) {
 	// Check item limit
 	for len(rs.results) >= rs.maxItems {
-		rs.evictLRU()
+		if !rs.evictLRU() {
+			break // No more unpinned items to evict
+		}
 	}
 
 	// Check memory limit
@@ -358,11 +387,22 @@ func (rs *ResultStore) evictLRU() bool {
 
 // cleanupLoop periodically removes expired results.
 func (rs *ResultStore) cleanupLoop() {
-	ticker := time.NewTicker(rs.ttl / 2)
+	// Use a minimum interval of 1 second to avoid tight loops in tests
+	interval := rs.ttl / 2
+	if interval < time.Second {
+		interval = time.Second
+	}
+
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		rs.cleanup()
+	for {
+		select {
+		case <-rs.stopCh:
+			return
+		case <-ticker.C:
+			rs.cleanup()
+		}
 	}
 }
 

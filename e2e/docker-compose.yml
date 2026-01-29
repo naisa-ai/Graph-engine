@@ -1,11 +1,25 @@
 version: '3.8'
 
+# =============================================================================
+# E2E Test Docker Compose
+# =============================================================================
+# Uses pre-built base images for faster builds. Run these first:
+#   make e2e-base    # Build all e2e base images
+#
+# Or build individually:
+#   make docker-base        # Server base image
+#   make e2e-go-base        # Go client base image  
+#   make e2e-py-base        # Python client base image
+# =============================================================================
+
 services:
-  # Graph-engine service under test
+  # Graph-engine service under test (uses cached base image)
   graph-engine:
     build:
       context: ..
-      dockerfile: Dockerfile
+      dockerfile: e2e/Dockerfile.server
+      args:
+        BASE_IMAGE: graph-engine-base:latest
     ports:
       - "50051:50051"
     environment:
@@ -24,6 +38,8 @@ services:
     build:
       context: ..
       dockerfile: e2e/client/Dockerfile
+      args:
+        BASE_IMAGE: graph-engine-e2e-go-base:latest
     depends_on:
       graph-engine:
         condition: service_healthy
@@ -40,6 +56,8 @@ services:
     build:
       context: ..
       dockerfile: e2e/go-client/Dockerfile
+      args:
+        BASE_IMAGE: graph-engine-e2e-go-base:latest
     depends_on:
       graph-engine:
         condition: service_healthy
@@ -56,6 +74,8 @@ services:
     build:
       context: ..
       dockerfile: e2e/py-client/Dockerfile
+      args:
+        BASE_IMAGE: graph-engine-e2e-py-base:latest
     depends_on:
       graph-engine:
         condition: service_healthy

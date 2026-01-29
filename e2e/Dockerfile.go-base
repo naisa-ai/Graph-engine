@@ -1,0 +1,35 @@
+# =============================================================================
+# E2E Go Client Base Dockerfile
+# =============================================================================
+# Base image for Go e2e test clients with modules pre-downloaded.
+# Caches Go modules so subsequent builds are fast.
+#
+# Build: docker build -f e2e/Dockerfile.go-base -t graph-engine-e2e-go-base .
+# =============================================================================
+
+FROM golang:1.24-alpine
+
+WORKDIR /build
+
+# Install git for go mod download
+RUN apk add --no-cache git ca-certificates
+
+# Copy all go.mod files to pre-download modules
+# Client library
+COPY clients/go/go.mod clients/go/go.sum /build/clients/go/
+
+# E2E clients
+COPY e2e/client/go.mod e2e/client/go.sum /build/e2e/client/
+COPY e2e/go-client/go.mod e2e/go-client/go.sum /build/e2e/go-client/
+
+# Download all modules
+WORKDIR /build/clients/go
+RUN go mod download || true
+
+WORKDIR /build/e2e/client
+RUN go mod download || true
+
+WORKDIR /build/e2e/go-client
+RUN go mod download || true
+
+WORKDIR /build

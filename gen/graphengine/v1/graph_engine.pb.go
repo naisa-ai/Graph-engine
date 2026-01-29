@@ -423,7 +423,7 @@ func (x GetJobResponse_State) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use GetJobResponse_State.Descriptor instead.
 func (GetJobResponse_State) EnumDescriptor() ([]byte, []int) {
-	return file_graphengine_v1_graph_engine_proto_rawDescGZIP(), []int{42, 0}
+	return file_graphengine_v1_graph_engine_proto_rawDescGZIP(), []int{44, 0}
 }
 
 type GraphRef struct {
@@ -2531,6 +2531,8 @@ type AlgoSpec struct {
 	//	*AlgoSpec_Neighborhood
 	//	*AlgoSpec_StMincut
 	//	*AlgoSpec_Corridor
+	//	*AlgoSpec_Kcore
+	//	*AlgoSpec_Betweenness
 	Kind          isAlgoSpec_Kind `protobuf_oneof:"kind"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -2654,6 +2656,24 @@ func (x *AlgoSpec) GetCorridor() *CorridorSpec {
 	return nil
 }
 
+func (x *AlgoSpec) GetKcore() *KCoreSpec {
+	if x != nil {
+		if x, ok := x.Kind.(*AlgoSpec_Kcore); ok {
+			return x.Kcore
+		}
+	}
+	return nil
+}
+
+func (x *AlgoSpec) GetBetweenness() *BetweennessSpec {
+	if x != nil {
+		if x, ok := x.Kind.(*AlgoSpec_Betweenness); ok {
+			return x.Betweenness
+		}
+	}
+	return nil
+}
+
 type isAlgoSpec_Kind interface {
 	isAlgoSpec_Kind()
 }
@@ -2694,6 +2714,15 @@ type AlgoSpec_Corridor struct {
 	Corridor *CorridorSpec `protobuf:"bytes,30,opt,name=corridor,proto3,oneof"`
 }
 
+type AlgoSpec_Kcore struct {
+	// New algorithms
+	Kcore *KCoreSpec `protobuf:"bytes,40,opt,name=kcore,proto3,oneof"`
+}
+
+type AlgoSpec_Betweenness struct {
+	Betweenness *BetweennessSpec `protobuf:"bytes,41,opt,name=betweenness,proto3,oneof"`
+}
+
 func (*AlgoSpec_Components) isAlgoSpec_Kind() {}
 
 func (*AlgoSpec_Communities) isAlgoSpec_Kind() {}
@@ -2711,6 +2740,10 @@ func (*AlgoSpec_Neighborhood) isAlgoSpec_Kind() {}
 func (*AlgoSpec_StMincut) isAlgoSpec_Kind() {}
 
 func (*AlgoSpec_Corridor) isAlgoSpec_Kind() {}
+
+func (*AlgoSpec_Kcore) isAlgoSpec_Kind() {}
+
+func (*AlgoSpec_Betweenness) isAlgoSpec_Kind() {}
 
 type ComponentsSpec struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -3294,6 +3327,116 @@ func (x *CorridorSpec) GetK() uint32 {
 	return 0
 }
 
+type KCoreSpec struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// If 0, compute full k-core decomposition (coreness for all vertices).
+	// If > 0, filter to vertices with coreness >= k.
+	K             uint32 `protobuf:"varint,1,opt,name=k,proto3" json:"k,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *KCoreSpec) Reset() {
+	*x = KCoreSpec{}
+	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[41]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *KCoreSpec) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*KCoreSpec) ProtoMessage() {}
+
+func (x *KCoreSpec) ProtoReflect() protoreflect.Message {
+	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[41]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use KCoreSpec.ProtoReflect.Descriptor instead.
+func (*KCoreSpec) Descriptor() ([]byte, []int) {
+	return file_graphengine_v1_graph_engine_proto_rawDescGZIP(), []int{41}
+}
+
+func (x *KCoreSpec) GetK() uint32 {
+	if x != nil {
+		return x.K
+	}
+	return 0
+}
+
+type BetweennessSpec struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Number of source vertices to sample (0 = all vertices).
+	// Sampling significantly speeds up computation for large graphs.
+	SampleSize uint32 `protobuf:"varint,1,opt,name=sample_size,json=sampleSize,proto3" json:"sample_size,omitempty"`
+	// Whether to normalize scores by graph size.
+	Normalized bool `protobuf:"varint,2,opt,name=normalized,proto3" json:"normalized,omitempty"`
+	// Optional edge weight column (empty = unweighted).
+	WeightColumn  string `protobuf:"bytes,3,opt,name=weight_column,json=weightColumn,proto3" json:"weight_column,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BetweennessSpec) Reset() {
+	*x = BetweennessSpec{}
+	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[42]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BetweennessSpec) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BetweennessSpec) ProtoMessage() {}
+
+func (x *BetweennessSpec) ProtoReflect() protoreflect.Message {
+	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[42]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BetweennessSpec.ProtoReflect.Descriptor instead.
+func (*BetweennessSpec) Descriptor() ([]byte, []int) {
+	return file_graphengine_v1_graph_engine_proto_rawDescGZIP(), []int{42}
+}
+
+func (x *BetweennessSpec) GetSampleSize() uint32 {
+	if x != nil {
+		return x.SampleSize
+	}
+	return 0
+}
+
+func (x *BetweennessSpec) GetNormalized() bool {
+	if x != nil {
+		return x.Normalized
+	}
+	return false
+}
+
+func (x *BetweennessSpec) GetWeightColumn() string {
+	if x != nil {
+		return x.WeightColumn
+	}
+	return ""
+}
+
 type GetJobRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Job           *JobRef                `protobuf:"bytes,1,opt,name=job,proto3" json:"job,omitempty"`
@@ -3303,7 +3446,7 @@ type GetJobRequest struct {
 
 func (x *GetJobRequest) Reset() {
 	*x = GetJobRequest{}
-	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[41]
+	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3315,7 +3458,7 @@ func (x *GetJobRequest) String() string {
 func (*GetJobRequest) ProtoMessage() {}
 
 func (x *GetJobRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[41]
+	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3328,7 +3471,7 @@ func (x *GetJobRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetJobRequest.ProtoReflect.Descriptor instead.
 func (*GetJobRequest) Descriptor() ([]byte, []int) {
-	return file_graphengine_v1_graph_engine_proto_rawDescGZIP(), []int{41}
+	return file_graphengine_v1_graph_engine_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *GetJobRequest) GetJob() *JobRef {
@@ -3353,7 +3496,7 @@ type GetJobResponse struct {
 
 func (x *GetJobResponse) Reset() {
 	*x = GetJobResponse{}
-	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[42]
+	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3365,7 +3508,7 @@ func (x *GetJobResponse) String() string {
 func (*GetJobResponse) ProtoMessage() {}
 
 func (x *GetJobResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[42]
+	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3378,7 +3521,7 @@ func (x *GetJobResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetJobResponse.ProtoReflect.Descriptor instead.
 func (*GetJobResponse) Descriptor() ([]byte, []int) {
-	return file_graphengine_v1_graph_engine_proto_rawDescGZIP(), []int{42}
+	return file_graphengine_v1_graph_engine_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *GetJobResponse) GetState() GetJobResponse_State {
@@ -3425,7 +3568,7 @@ type CancelJobRequest struct {
 
 func (x *CancelJobRequest) Reset() {
 	*x = CancelJobRequest{}
-	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[43]
+	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3437,7 +3580,7 @@ func (x *CancelJobRequest) String() string {
 func (*CancelJobRequest) ProtoMessage() {}
 
 func (x *CancelJobRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[43]
+	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3450,7 +3593,7 @@ func (x *CancelJobRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelJobRequest.ProtoReflect.Descriptor instead.
 func (*CancelJobRequest) Descriptor() ([]byte, []int) {
-	return file_graphengine_v1_graph_engine_proto_rawDescGZIP(), []int{43}
+	return file_graphengine_v1_graph_engine_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *CancelJobRequest) GetJob() *JobRef {
@@ -3469,7 +3612,7 @@ type CancelJobResponse struct {
 
 func (x *CancelJobResponse) Reset() {
 	*x = CancelJobResponse{}
-	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[44]
+	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3481,7 +3624,7 @@ func (x *CancelJobResponse) String() string {
 func (*CancelJobResponse) ProtoMessage() {}
 
 func (x *CancelJobResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[44]
+	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3494,7 +3637,7 @@ func (x *CancelJobResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelJobResponse.ProtoReflect.Descriptor instead.
 func (*CancelJobResponse) Descriptor() ([]byte, []int) {
-	return file_graphengine_v1_graph_engine_proto_rawDescGZIP(), []int{44}
+	return file_graphengine_v1_graph_engine_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *CancelJobResponse) GetCanceled() bool {
@@ -3513,7 +3656,7 @@ type GetResultRequest struct {
 
 func (x *GetResultRequest) Reset() {
 	*x = GetResultRequest{}
-	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[45]
+	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3525,7 +3668,7 @@ func (x *GetResultRequest) String() string {
 func (*GetResultRequest) ProtoMessage() {}
 
 func (x *GetResultRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[45]
+	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3538,7 +3681,7 @@ func (x *GetResultRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetResultRequest.ProtoReflect.Descriptor instead.
 func (*GetResultRequest) Descriptor() ([]byte, []int) {
-	return file_graphengine_v1_graph_engine_proto_rawDescGZIP(), []int{45}
+	return file_graphengine_v1_graph_engine_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *GetResultRequest) GetResult() *ResultRef {
@@ -3562,6 +3705,8 @@ type ResultChunk struct {
 	//	*ResultChunk_ShortestPath
 	//	*ResultChunk_StMincut
 	//	*ResultChunk_Corridor
+	//	*ResultChunk_Kcore
+	//	*ResultChunk_Betweenness
 	//	*ResultChunk_Done
 	Payload       isResultChunk_Payload `protobuf_oneof:"payload"`
 	unknownFields protoimpl.UnknownFields
@@ -3570,7 +3715,7 @@ type ResultChunk struct {
 
 func (x *ResultChunk) Reset() {
 	*x = ResultChunk{}
-	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[46]
+	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3582,7 +3727,7 @@ func (x *ResultChunk) String() string {
 func (*ResultChunk) ProtoMessage() {}
 
 func (x *ResultChunk) ProtoReflect() protoreflect.Message {
-	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[46]
+	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3595,7 +3740,7 @@ func (x *ResultChunk) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResultChunk.ProtoReflect.Descriptor instead.
 func (*ResultChunk) Descriptor() ([]byte, []int) {
-	return file_graphengine_v1_graph_engine_proto_rawDescGZIP(), []int{46}
+	return file_graphengine_v1_graph_engine_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *ResultChunk) GetPayload() isResultChunk_Payload {
@@ -3677,6 +3822,24 @@ func (x *ResultChunk) GetCorridor() *CorridorResult {
 	return nil
 }
 
+func (x *ResultChunk) GetKcore() *KCoreResult {
+	if x != nil {
+		if x, ok := x.Payload.(*ResultChunk_Kcore); ok {
+			return x.Kcore
+		}
+	}
+	return nil
+}
+
+func (x *ResultChunk) GetBetweenness() *BetweennessResult {
+	if x != nil {
+		if x, ok := x.Payload.(*ResultChunk_Betweenness); ok {
+			return x.Betweenness
+		}
+	}
+	return nil
+}
+
 func (x *ResultChunk) GetDone() bool {
 	if x != nil {
 		if x, ok := x.Payload.(*ResultChunk_Done); ok {
@@ -3724,6 +3887,15 @@ type ResultChunk_Corridor struct {
 	Corridor *CorridorResult `protobuf:"bytes,22,opt,name=corridor,proto3,oneof"`
 }
 
+type ResultChunk_Kcore struct {
+	// New result types
+	Kcore *KCoreResult `protobuf:"bytes,23,opt,name=kcore,proto3,oneof"`
+}
+
+type ResultChunk_Betweenness struct {
+	Betweenness *BetweennessResult `protobuf:"bytes,24,opt,name=betweenness,proto3,oneof"`
+}
+
 type ResultChunk_Done struct {
 	// Terminal marker
 	Done bool `protobuf:"varint,99,opt,name=done,proto3,oneof"`
@@ -3745,6 +3917,10 @@ func (*ResultChunk_StMincut) isResultChunk_Payload() {}
 
 func (*ResultChunk_Corridor) isResultChunk_Payload() {}
 
+func (*ResultChunk_Kcore) isResultChunk_Payload() {}
+
+func (*ResultChunk_Betweenness) isResultChunk_Payload() {}
+
 func (*ResultChunk_Done) isResultChunk_Payload() {}
 
 type ResultHeader struct {
@@ -3760,7 +3936,7 @@ type ResultHeader struct {
 
 func (x *ResultHeader) Reset() {
 	*x = ResultHeader{}
-	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[47]
+	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3772,7 +3948,7 @@ func (x *ResultHeader) String() string {
 func (*ResultHeader) ProtoMessage() {}
 
 func (x *ResultHeader) ProtoReflect() protoreflect.Message {
-	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[47]
+	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3785,7 +3961,7 @@ func (x *ResultHeader) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResultHeader.ProtoReflect.Descriptor instead.
 func (*ResultHeader) Descriptor() ([]byte, []int) {
-	return file_graphengine_v1_graph_engine_proto_rawDescGZIP(), []int{47}
+	return file_graphengine_v1_graph_engine_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *ResultHeader) GetResultId() string {
@@ -3833,7 +4009,7 @@ type U32Buffer struct {
 
 func (x *U32Buffer) Reset() {
 	*x = U32Buffer{}
-	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[48]
+	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3845,7 +4021,7 @@ func (x *U32Buffer) String() string {
 func (*U32Buffer) ProtoMessage() {}
 
 func (x *U32Buffer) ProtoReflect() protoreflect.Message {
-	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[48]
+	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3858,7 +4034,7 @@ func (x *U32Buffer) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use U32Buffer.ProtoReflect.Descriptor instead.
 func (*U32Buffer) Descriptor() ([]byte, []int) {
-	return file_graphengine_v1_graph_engine_proto_rawDescGZIP(), []int{48}
+	return file_graphengine_v1_graph_engine_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *U32Buffer) GetName() string {
@@ -3885,7 +4061,7 @@ type U64Buffer struct {
 
 func (x *U64Buffer) Reset() {
 	*x = U64Buffer{}
-	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[49]
+	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3897,7 +4073,7 @@ func (x *U64Buffer) String() string {
 func (*U64Buffer) ProtoMessage() {}
 
 func (x *U64Buffer) ProtoReflect() protoreflect.Message {
-	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[49]
+	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3910,7 +4086,7 @@ func (x *U64Buffer) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use U64Buffer.ProtoReflect.Descriptor instead.
 func (*U64Buffer) Descriptor() ([]byte, []int) {
-	return file_graphengine_v1_graph_engine_proto_rawDescGZIP(), []int{49}
+	return file_graphengine_v1_graph_engine_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *U64Buffer) GetName() string {
@@ -3937,7 +4113,7 @@ type F64Buffer struct {
 
 func (x *F64Buffer) Reset() {
 	*x = F64Buffer{}
-	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[50]
+	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3949,7 +4125,7 @@ func (x *F64Buffer) String() string {
 func (*F64Buffer) ProtoMessage() {}
 
 func (x *F64Buffer) ProtoReflect() protoreflect.Message {
-	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[50]
+	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3962,7 +4138,7 @@ func (x *F64Buffer) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use F64Buffer.ProtoReflect.Descriptor instead.
 func (*F64Buffer) Descriptor() ([]byte, []int) {
-	return file_graphengine_v1_graph_engine_proto_rawDescGZIP(), []int{50}
+	return file_graphengine_v1_graph_engine_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *F64Buffer) GetName() string {
@@ -3989,7 +4165,7 @@ type BytesBuffer struct {
 
 func (x *BytesBuffer) Reset() {
 	*x = BytesBuffer{}
-	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[51]
+	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4001,7 +4177,7 @@ func (x *BytesBuffer) String() string {
 func (*BytesBuffer) ProtoMessage() {}
 
 func (x *BytesBuffer) ProtoReflect() protoreflect.Message {
-	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[51]
+	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4014,7 +4190,7 @@ func (x *BytesBuffer) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BytesBuffer.ProtoReflect.Descriptor instead.
 func (*BytesBuffer) Descriptor() ([]byte, []int) {
-	return file_graphengine_v1_graph_engine_proto_rawDescGZIP(), []int{51}
+	return file_graphengine_v1_graph_engine_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *BytesBuffer) GetName() string {
@@ -4042,7 +4218,7 @@ type ShortestPathResult struct {
 
 func (x *ShortestPathResult) Reset() {
 	*x = ShortestPathResult{}
-	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[52]
+	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4054,7 +4230,7 @@ func (x *ShortestPathResult) String() string {
 func (*ShortestPathResult) ProtoMessage() {}
 
 func (x *ShortestPathResult) ProtoReflect() protoreflect.Message {
-	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[52]
+	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4067,7 +4243,7 @@ func (x *ShortestPathResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ShortestPathResult.ProtoReflect.Descriptor instead.
 func (*ShortestPathResult) Descriptor() ([]byte, []int) {
-	return file_graphengine_v1_graph_engine_proto_rawDescGZIP(), []int{52}
+	return file_graphengine_v1_graph_engine_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *ShortestPathResult) GetVerticesU64() []uint64 {
@@ -4102,7 +4278,7 @@ type STMinCutResult struct {
 
 func (x *STMinCutResult) Reset() {
 	*x = STMinCutResult{}
-	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[53]
+	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4114,7 +4290,7 @@ func (x *STMinCutResult) String() string {
 func (*STMinCutResult) ProtoMessage() {}
 
 func (x *STMinCutResult) ProtoReflect() protoreflect.Message {
-	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[53]
+	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4127,7 +4303,7 @@ func (x *STMinCutResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use STMinCutResult.ProtoReflect.Descriptor instead.
 func (*STMinCutResult) Descriptor() ([]byte, []int) {
-	return file_graphengine_v1_graph_engine_proto_rawDescGZIP(), []int{53}
+	return file_graphengine_v1_graph_engine_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *STMinCutResult) GetCutValue() float64 {
@@ -4161,7 +4337,7 @@ type CorridorResult struct {
 
 func (x *CorridorResult) Reset() {
 	*x = CorridorResult{}
-	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[54]
+	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4173,7 +4349,7 @@ func (x *CorridorResult) String() string {
 func (*CorridorResult) ProtoMessage() {}
 
 func (x *CorridorResult) ProtoReflect() protoreflect.Message {
-	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[54]
+	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4186,7 +4362,7 @@ func (x *CorridorResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CorridorResult.ProtoReflect.Descriptor instead.
 func (*CorridorResult) Descriptor() ([]byte, []int) {
-	return file_graphengine_v1_graph_engine_proto_rawDescGZIP(), []int{54}
+	return file_graphengine_v1_graph_engine_proto_rawDescGZIP(), []int{56}
 }
 
 func (x *CorridorResult) GetView() *ViewRef {
@@ -4199,6 +4375,105 @@ func (x *CorridorResult) GetView() *ViewRef {
 func (x *CorridorResult) GetMeta() map[string]string {
 	if x != nil {
 		return x.Meta
+	}
+	return nil
+}
+
+type KCoreResult struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Coreness value per vertex (indexed by vertex index).
+	Coreness []uint32 `protobuf:"varint,1,rep,packed,name=coreness,proto3" json:"coreness,omitempty"`
+	// Maximum k found (highest coreness value).
+	MaxCore       uint32 `protobuf:"varint,2,opt,name=max_core,json=maxCore,proto3" json:"max_core,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *KCoreResult) Reset() {
+	*x = KCoreResult{}
+	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[57]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *KCoreResult) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*KCoreResult) ProtoMessage() {}
+
+func (x *KCoreResult) ProtoReflect() protoreflect.Message {
+	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[57]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use KCoreResult.ProtoReflect.Descriptor instead.
+func (*KCoreResult) Descriptor() ([]byte, []int) {
+	return file_graphengine_v1_graph_engine_proto_rawDescGZIP(), []int{57}
+}
+
+func (x *KCoreResult) GetCoreness() []uint32 {
+	if x != nil {
+		return x.Coreness
+	}
+	return nil
+}
+
+func (x *KCoreResult) GetMaxCore() uint32 {
+	if x != nil {
+		return x.MaxCore
+	}
+	return 0
+}
+
+type BetweennessResult struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Betweenness centrality score per vertex (indexed by vertex index).
+	Scores        []float64 `protobuf:"fixed64,1,rep,packed,name=scores,proto3" json:"scores,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BetweennessResult) Reset() {
+	*x = BetweennessResult{}
+	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[58]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BetweennessResult) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BetweennessResult) ProtoMessage() {}
+
+func (x *BetweennessResult) ProtoReflect() protoreflect.Message {
+	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[58]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BetweennessResult.ProtoReflect.Descriptor instead.
+func (*BetweennessResult) Descriptor() ([]byte, []int) {
+	return file_graphengine_v1_graph_engine_proto_rawDescGZIP(), []int{58}
+}
+
+func (x *BetweennessResult) GetScores() []float64 {
+	if x != nil {
+		return x.Scores
 	}
 	return nil
 }
@@ -4216,7 +4491,7 @@ type ReleaseRequest struct {
 
 func (x *ReleaseRequest) Reset() {
 	*x = ReleaseRequest{}
-	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[55]
+	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[59]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4228,7 +4503,7 @@ func (x *ReleaseRequest) String() string {
 func (*ReleaseRequest) ProtoMessage() {}
 
 func (x *ReleaseRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[55]
+	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[59]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4241,7 +4516,7 @@ func (x *ReleaseRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReleaseRequest.ProtoReflect.Descriptor instead.
 func (*ReleaseRequest) Descriptor() ([]byte, []int) {
-	return file_graphengine_v1_graph_engine_proto_rawDescGZIP(), []int{55}
+	return file_graphengine_v1_graph_engine_proto_rawDescGZIP(), []int{59}
 }
 
 func (x *ReleaseRequest) GetTarget() isReleaseRequest_Target {
@@ -4294,7 +4569,7 @@ type ReleaseResponse struct {
 
 func (x *ReleaseResponse) Reset() {
 	*x = ReleaseResponse{}
-	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[56]
+	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[60]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4306,7 +4581,7 @@ func (x *ReleaseResponse) String() string {
 func (*ReleaseResponse) ProtoMessage() {}
 
 func (x *ReleaseResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[56]
+	mi := &file_graphengine_v1_graph_engine_proto_msgTypes[60]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4319,7 +4594,7 @@ func (x *ReleaseResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReleaseResponse.ProtoReflect.Descriptor instead.
 func (*ReleaseResponse) Descriptor() ([]byte, []int) {
-	return file_graphengine_v1_graph_engine_proto_rawDescGZIP(), []int{56}
+	return file_graphengine_v1_graph_engine_proto_rawDescGZIP(), []int{60}
 }
 
 func (x *ReleaseResponse) GetReleased() bool {
@@ -4493,7 +4768,7 @@ const file_graphengine_v1_graph_engine_proto_rawDesc = "" +
 	"allowCacheB\b\n" +
 	"\x06target\"7\n" +
 	"\vRunResponse\x12(\n" +
-	"\x03job\x18\x01 \x01(\v2\x16.graphengine.v1.JobRefR\x03job\"\xe4\x04\n" +
+	"\x03job\x18\x01 \x01(\v2\x16.graphengine.v1.JobRefR\x03job\"\xdc\x05\n" +
 	"\bAlgoSpec\x12@\n" +
 	"\n" +
 	"components\x18\x01 \x01(\v2\x1e.graphengine.v1.ComponentsSpecH\x00R\n" +
@@ -4506,7 +4781,9 @@ const file_graphengine_v1_graph_engine_proto_rawDesc = "" +
 	"\x03bfs\x18\r \x01(\v2\x17.graphengine.v1.BFSSpecH\x00R\x03bfs\x12K\n" +
 	"\fneighborhood\x18\x0e \x01(\v2%.graphengine.v1.NeighborhoodQuerySpecH\x00R\fneighborhood\x12;\n" +
 	"\tst_mincut\x18\x14 \x01(\v2\x1c.graphengine.v1.STMinCutSpecH\x00R\bstMincut\x12:\n" +
-	"\bcorridor\x18\x1e \x01(\v2\x1c.graphengine.v1.CorridorSpecH\x00R\bcorridorB\x06\n" +
+	"\bcorridor\x18\x1e \x01(\v2\x1c.graphengine.v1.CorridorSpecH\x00R\bcorridor\x121\n" +
+	"\x05kcore\x18( \x01(\v2\x19.graphengine.v1.KCoreSpecH\x00R\x05kcore\x12C\n" +
+	"\vbetweenness\x18) \x01(\v2\x1f.graphengine.v1.BetweennessSpecH\x00R\vbetweennessB\x06\n" +
 	"\x04kind\"g\n" +
 	"\x0eComponentsSpec\x127\n" +
 	"\x04mode\x18\x01 \x01(\x0e2#.graphengine.v1.ComponentsSpec.ModeR\x04mode\"\x1c\n" +
@@ -4574,7 +4851,16 @@ const file_graphengine_v1_graph_engine_proto_rawDesc = "" +
 	"\x06Method\x12\x16\n" +
 	"\x12SHORTEST_PATH_HULL\x10\x00\x12\f\n" +
 	"\bKSP_HULL\x10\x01\x12\x13\n" +
-	"\x0fCOMMUNITY_AWARE\x10\x02\"9\n" +
+	"\x0fCOMMUNITY_AWARE\x10\x02\"\x19\n" +
+	"\tKCoreSpec\x12\f\n" +
+	"\x01k\x18\x01 \x01(\rR\x01k\"w\n" +
+	"\x0fBetweennessSpec\x12\x1f\n" +
+	"\vsample_size\x18\x01 \x01(\rR\n" +
+	"sampleSize\x12\x1e\n" +
+	"\n" +
+	"normalized\x18\x02 \x01(\bR\n" +
+	"normalized\x12#\n" +
+	"\rweight_column\x18\x03 \x01(\tR\fweightColumn\"9\n" +
 	"\rGetJobRequest\x12(\n" +
 	"\x03job\x18\x01 \x01(\v2\x16.graphengine.v1.JobRefR\x03job\"\xf3\x02\n" +
 	"\x0eGetJobResponse\x12:\n" +
@@ -4598,7 +4884,7 @@ const file_graphengine_v1_graph_engine_proto_rawDesc = "" +
 	"\x11CancelJobResponse\x12\x1a\n" +
 	"\bcanceled\x18\x01 \x01(\bR\bcanceled\"E\n" +
 	"\x10GetResultRequest\x121\n" +
-	"\x06result\x18\x01 \x01(\v2\x19.graphengine.v1.ResultRefR\x06result\"\xf0\x03\n" +
+	"\x06result\x18\x01 \x01(\v2\x19.graphengine.v1.ResultRefR\x06result\"\xec\x04\n" +
 	"\vResultChunk\x126\n" +
 	"\x06header\x18\x01 \x01(\v2\x1c.graphengine.v1.ResultHeaderH\x00R\x06header\x12-\n" +
 	"\x03u32\x18\n" +
@@ -4608,7 +4894,9 @@ const file_graphengine_v1_graph_engine_proto_rawDesc = "" +
 	"\x05bytes\x18\r \x01(\v2\x1b.graphengine.v1.BytesBufferH\x00R\x05bytes\x12I\n" +
 	"\rshortest_path\x18\x14 \x01(\v2\".graphengine.v1.ShortestPathResultH\x00R\fshortestPath\x12=\n" +
 	"\tst_mincut\x18\x15 \x01(\v2\x1e.graphengine.v1.STMinCutResultH\x00R\bstMincut\x12<\n" +
-	"\bcorridor\x18\x16 \x01(\v2\x1e.graphengine.v1.CorridorResultH\x00R\bcorridor\x12\x14\n" +
+	"\bcorridor\x18\x16 \x01(\v2\x1e.graphengine.v1.CorridorResultH\x00R\bcorridor\x123\n" +
+	"\x05kcore\x18\x17 \x01(\v2\x1b.graphengine.v1.KCoreResultH\x00R\x05kcore\x12E\n" +
+	"\vbetweenness\x18\x18 \x01(\v2!.graphengine.v1.BetweennessResultH\x00R\vbetweenness\x12\x14\n" +
 	"\x04done\x18c \x01(\bH\x00R\x04doneB\t\n" +
 	"\apayload\"\xe4\x01\n" +
 	"\fResultHeader\x12\x1b\n" +
@@ -4646,7 +4934,12 @@ const file_graphengine_v1_graph_engine_proto_rawDesc = "" +
 	"\x04meta\x18\x02 \x03(\v2(.graphengine.v1.CorridorResult.MetaEntryR\x04meta\x1a7\n" +
 	"\tMetaEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"~\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"D\n" +
+	"\vKCoreResult\x12\x1a\n" +
+	"\bcoreness\x18\x01 \x03(\rR\bcoreness\x12\x19\n" +
+	"\bmax_core\x18\x02 \x01(\rR\amaxCore\"+\n" +
+	"\x11BetweennessResult\x12\x16\n" +
+	"\x06scores\x18\x01 \x03(\x01R\x06scores\"~\n" +
 	"\x0eReleaseRequest\x12-\n" +
 	"\x04view\x18\x01 \x01(\v2\x17.graphengine.v1.ViewRefH\x00R\x04view\x123\n" +
 	"\x06result\x18\x02 \x01(\v2\x19.graphengine.v1.ResultRefH\x00R\x06resultB\b\n" +
@@ -4688,7 +4981,7 @@ func file_graphengine_v1_graph_engine_proto_rawDescGZIP() []byte {
 }
 
 var file_graphengine_v1_graph_engine_proto_enumTypes = make([]protoimpl.EnumInfo, 8)
-var file_graphengine_v1_graph_engine_proto_msgTypes = make([]protoimpl.MessageInfo, 60)
+var file_graphengine_v1_graph_engine_proto_msgTypes = make([]protoimpl.MessageInfo, 64)
 var file_graphengine_v1_graph_engine_proto_goTypes = []any{
 	(ColumnType)(0),                     // 0: graphengine.v1.ColumnType
 	(BeginBuildRequest_NodeIdFormat)(0), // 1: graphengine.v1.BeginBuildRequest.NodeIdFormat
@@ -4739,32 +5032,36 @@ var file_graphengine_v1_graph_engine_proto_goTypes = []any{
 	(*KShortestPathsSpec)(nil),          // 46: graphengine.v1.KShortestPathsSpec
 	(*STMinCutSpec)(nil),                // 47: graphengine.v1.STMinCutSpec
 	(*CorridorSpec)(nil),                // 48: graphengine.v1.CorridorSpec
-	(*GetJobRequest)(nil),               // 49: graphengine.v1.GetJobRequest
-	(*GetJobResponse)(nil),              // 50: graphengine.v1.GetJobResponse
-	(*CancelJobRequest)(nil),            // 51: graphengine.v1.CancelJobRequest
-	(*CancelJobResponse)(nil),           // 52: graphengine.v1.CancelJobResponse
-	(*GetResultRequest)(nil),            // 53: graphengine.v1.GetResultRequest
-	(*ResultChunk)(nil),                 // 54: graphengine.v1.ResultChunk
-	(*ResultHeader)(nil),                // 55: graphengine.v1.ResultHeader
-	(*U32Buffer)(nil),                   // 56: graphengine.v1.U32Buffer
-	(*U64Buffer)(nil),                   // 57: graphengine.v1.U64Buffer
-	(*F64Buffer)(nil),                   // 58: graphengine.v1.F64Buffer
-	(*BytesBuffer)(nil),                 // 59: graphengine.v1.BytesBuffer
-	(*ShortestPathResult)(nil),          // 60: graphengine.v1.ShortestPathResult
-	(*STMinCutResult)(nil),              // 61: graphengine.v1.STMinCutResult
-	(*CorridorResult)(nil),              // 62: graphengine.v1.CorridorResult
-	(*ReleaseRequest)(nil),              // 63: graphengine.v1.ReleaseRequest
-	(*ReleaseResponse)(nil),             // 64: graphengine.v1.ReleaseResponse
-	nil,                                 // 65: graphengine.v1.BeginBuildRequest.LabelsEntry
-	nil,                                 // 66: graphengine.v1.ResultHeader.MetaEntry
-	nil,                                 // 67: graphengine.v1.CorridorResult.MetaEntry
-	(*durationpb.Duration)(nil),         // 68: google.protobuf.Duration
-	(*timestamppb.Timestamp)(nil),       // 69: google.protobuf.Timestamp
+	(*KCoreSpec)(nil),                   // 49: graphengine.v1.KCoreSpec
+	(*BetweennessSpec)(nil),             // 50: graphengine.v1.BetweennessSpec
+	(*GetJobRequest)(nil),               // 51: graphengine.v1.GetJobRequest
+	(*GetJobResponse)(nil),              // 52: graphengine.v1.GetJobResponse
+	(*CancelJobRequest)(nil),            // 53: graphengine.v1.CancelJobRequest
+	(*CancelJobResponse)(nil),           // 54: graphengine.v1.CancelJobResponse
+	(*GetResultRequest)(nil),            // 55: graphengine.v1.GetResultRequest
+	(*ResultChunk)(nil),                 // 56: graphengine.v1.ResultChunk
+	(*ResultHeader)(nil),                // 57: graphengine.v1.ResultHeader
+	(*U32Buffer)(nil),                   // 58: graphengine.v1.U32Buffer
+	(*U64Buffer)(nil),                   // 59: graphengine.v1.U64Buffer
+	(*F64Buffer)(nil),                   // 60: graphengine.v1.F64Buffer
+	(*BytesBuffer)(nil),                 // 61: graphengine.v1.BytesBuffer
+	(*ShortestPathResult)(nil),          // 62: graphengine.v1.ShortestPathResult
+	(*STMinCutResult)(nil),              // 63: graphengine.v1.STMinCutResult
+	(*CorridorResult)(nil),              // 64: graphengine.v1.CorridorResult
+	(*KCoreResult)(nil),                 // 65: graphengine.v1.KCoreResult
+	(*BetweennessResult)(nil),           // 66: graphengine.v1.BetweennessResult
+	(*ReleaseRequest)(nil),              // 67: graphengine.v1.ReleaseRequest
+	(*ReleaseResponse)(nil),             // 68: graphengine.v1.ReleaseResponse
+	nil,                                 // 69: graphengine.v1.BeginBuildRequest.LabelsEntry
+	nil,                                 // 70: graphengine.v1.ResultHeader.MetaEntry
+	nil,                                 // 71: graphengine.v1.CorridorResult.MetaEntry
+	(*durationpb.Duration)(nil),         // 72: google.protobuf.Duration
+	(*timestamppb.Timestamp)(nil),       // 73: google.protobuf.Timestamp
 }
 var file_graphengine_v1_graph_engine_proto_depIdxs = []int32{
 	1,  // 0: graphengine.v1.BeginBuildRequest.node_id_format:type_name -> graphengine.v1.BeginBuildRequest.NodeIdFormat
 	20, // 1: graphengine.v1.BeginBuildRequest.schema:type_name -> graphengine.v1.Schema
-	65, // 2: graphengine.v1.BeginBuildRequest.labels:type_name -> graphengine.v1.BeginBuildRequest.LabelsEntry
+	69, // 2: graphengine.v1.BeginBuildRequest.labels:type_name -> graphengine.v1.BeginBuildRequest.LabelsEntry
 	22, // 3: graphengine.v1.UploadRequest.vertices:type_name -> graphengine.v1.VertexChunk
 	23, // 4: graphengine.v1.UploadRequest.edges:type_name -> graphengine.v1.EdgeChunk
 	24, // 5: graphengine.v1.UploadRequest.vertex_columns:type_name -> graphengine.v1.ColumnChunk
@@ -4794,7 +5091,7 @@ var file_graphengine_v1_graph_engine_proto_depIdxs = []int32{
 	8,  // 29: graphengine.v1.RunRequest.graph:type_name -> graphengine.v1.GraphRef
 	9,  // 30: graphengine.v1.RunRequest.view:type_name -> graphengine.v1.ViewRef
 	39, // 31: graphengine.v1.RunRequest.algo:type_name -> graphengine.v1.AlgoSpec
-	68, // 32: graphengine.v1.RunRequest.timeout:type_name -> google.protobuf.Duration
+	72, // 32: graphengine.v1.RunRequest.timeout:type_name -> google.protobuf.Duration
 	11, // 33: graphengine.v1.RunResponse.job:type_name -> graphengine.v1.JobRef
 	40, // 34: graphengine.v1.AlgoSpec.components:type_name -> graphengine.v1.ComponentsSpec
 	41, // 35: graphengine.v1.AlgoSpec.communities:type_name -> graphengine.v1.CommunitiesSpec
@@ -4805,56 +5102,60 @@ var file_graphengine_v1_graph_engine_proto_depIdxs = []int32{
 	45, // 40: graphengine.v1.AlgoSpec.neighborhood:type_name -> graphengine.v1.NeighborhoodQuerySpec
 	47, // 41: graphengine.v1.AlgoSpec.st_mincut:type_name -> graphengine.v1.STMinCutSpec
 	48, // 42: graphengine.v1.AlgoSpec.corridor:type_name -> graphengine.v1.CorridorSpec
-	4,  // 43: graphengine.v1.ComponentsSpec.mode:type_name -> graphengine.v1.ComponentsSpec.Mode
-	5,  // 44: graphengine.v1.CommunitiesSpec.method:type_name -> graphengine.v1.CommunitiesSpec.Method
-	2,  // 45: graphengine.v1.BFSSpec.mode:type_name -> graphengine.v1.NeighborhoodSpec.Mode
-	2,  // 46: graphengine.v1.NeighborhoodQuerySpec.mode:type_name -> graphengine.v1.NeighborhoodSpec.Mode
-	68, // 47: graphengine.v1.KShortestPathsSpec.per_path_timeout:type_name -> google.protobuf.Duration
-	6,  // 48: graphengine.v1.CorridorSpec.method:type_name -> graphengine.v1.CorridorSpec.Method
-	11, // 49: graphengine.v1.GetJobRequest.job:type_name -> graphengine.v1.JobRef
-	7,  // 50: graphengine.v1.GetJobResponse.state:type_name -> graphengine.v1.GetJobResponse.State
-	69, // 51: graphengine.v1.GetJobResponse.started_at:type_name -> google.protobuf.Timestamp
-	69, // 52: graphengine.v1.GetJobResponse.finished_at:type_name -> google.protobuf.Timestamp
-	10, // 53: graphengine.v1.GetJobResponse.result:type_name -> graphengine.v1.ResultRef
-	18, // 54: graphengine.v1.GetJobResponse.status:type_name -> graphengine.v1.Status
-	11, // 55: graphengine.v1.CancelJobRequest.job:type_name -> graphengine.v1.JobRef
-	10, // 56: graphengine.v1.GetResultRequest.result:type_name -> graphengine.v1.ResultRef
-	55, // 57: graphengine.v1.ResultChunk.header:type_name -> graphengine.v1.ResultHeader
-	56, // 58: graphengine.v1.ResultChunk.u32:type_name -> graphengine.v1.U32Buffer
-	57, // 59: graphengine.v1.ResultChunk.u64:type_name -> graphengine.v1.U64Buffer
-	58, // 60: graphengine.v1.ResultChunk.f64:type_name -> graphengine.v1.F64Buffer
-	59, // 61: graphengine.v1.ResultChunk.bytes:type_name -> graphengine.v1.BytesBuffer
-	60, // 62: graphengine.v1.ResultChunk.shortest_path:type_name -> graphengine.v1.ShortestPathResult
-	61, // 63: graphengine.v1.ResultChunk.st_mincut:type_name -> graphengine.v1.STMinCutResult
-	62, // 64: graphengine.v1.ResultChunk.corridor:type_name -> graphengine.v1.CorridorResult
-	66, // 65: graphengine.v1.ResultHeader.meta:type_name -> graphengine.v1.ResultHeader.MetaEntry
-	9,  // 66: graphengine.v1.CorridorResult.view:type_name -> graphengine.v1.ViewRef
-	67, // 67: graphengine.v1.CorridorResult.meta:type_name -> graphengine.v1.CorridorResult.MetaEntry
-	9,  // 68: graphengine.v1.ReleaseRequest.view:type_name -> graphengine.v1.ViewRef
-	10, // 69: graphengine.v1.ReleaseRequest.result:type_name -> graphengine.v1.ResultRef
-	12, // 70: graphengine.v1.GraphEngine.BeginBuild:input_type -> graphengine.v1.BeginBuildRequest
-	14, // 71: graphengine.v1.GraphEngine.Upload:input_type -> graphengine.v1.UploadRequest
-	16, // 72: graphengine.v1.GraphEngine.PublishBuild:input_type -> graphengine.v1.PublishBuildRequest
-	25, // 73: graphengine.v1.GraphEngine.CreateView:input_type -> graphengine.v1.CreateViewRequest
-	37, // 74: graphengine.v1.GraphEngine.Run:input_type -> graphengine.v1.RunRequest
-	49, // 75: graphengine.v1.GraphEngine.GetJob:input_type -> graphengine.v1.GetJobRequest
-	51, // 76: graphengine.v1.GraphEngine.CancelJob:input_type -> graphengine.v1.CancelJobRequest
-	53, // 77: graphengine.v1.GraphEngine.GetResult:input_type -> graphengine.v1.GetResultRequest
-	63, // 78: graphengine.v1.GraphEngine.Release:input_type -> graphengine.v1.ReleaseRequest
-	13, // 79: graphengine.v1.GraphEngine.BeginBuild:output_type -> graphengine.v1.BeginBuildResponse
-	15, // 80: graphengine.v1.GraphEngine.Upload:output_type -> graphengine.v1.UploadResponse
-	17, // 81: graphengine.v1.GraphEngine.PublishBuild:output_type -> graphengine.v1.PublishBuildResponse
-	26, // 82: graphengine.v1.GraphEngine.CreateView:output_type -> graphengine.v1.CreateViewResponse
-	38, // 83: graphengine.v1.GraphEngine.Run:output_type -> graphengine.v1.RunResponse
-	50, // 84: graphengine.v1.GraphEngine.GetJob:output_type -> graphengine.v1.GetJobResponse
-	52, // 85: graphengine.v1.GraphEngine.CancelJob:output_type -> graphengine.v1.CancelJobResponse
-	54, // 86: graphengine.v1.GraphEngine.GetResult:output_type -> graphengine.v1.ResultChunk
-	64, // 87: graphengine.v1.GraphEngine.Release:output_type -> graphengine.v1.ReleaseResponse
-	79, // [79:88] is the sub-list for method output_type
-	70, // [70:79] is the sub-list for method input_type
-	70, // [70:70] is the sub-list for extension type_name
-	70, // [70:70] is the sub-list for extension extendee
-	0,  // [0:70] is the sub-list for field type_name
+	49, // 43: graphengine.v1.AlgoSpec.kcore:type_name -> graphengine.v1.KCoreSpec
+	50, // 44: graphengine.v1.AlgoSpec.betweenness:type_name -> graphengine.v1.BetweennessSpec
+	4,  // 45: graphengine.v1.ComponentsSpec.mode:type_name -> graphengine.v1.ComponentsSpec.Mode
+	5,  // 46: graphengine.v1.CommunitiesSpec.method:type_name -> graphengine.v1.CommunitiesSpec.Method
+	2,  // 47: graphengine.v1.BFSSpec.mode:type_name -> graphengine.v1.NeighborhoodSpec.Mode
+	2,  // 48: graphengine.v1.NeighborhoodQuerySpec.mode:type_name -> graphengine.v1.NeighborhoodSpec.Mode
+	72, // 49: graphengine.v1.KShortestPathsSpec.per_path_timeout:type_name -> google.protobuf.Duration
+	6,  // 50: graphengine.v1.CorridorSpec.method:type_name -> graphengine.v1.CorridorSpec.Method
+	11, // 51: graphengine.v1.GetJobRequest.job:type_name -> graphengine.v1.JobRef
+	7,  // 52: graphengine.v1.GetJobResponse.state:type_name -> graphengine.v1.GetJobResponse.State
+	73, // 53: graphengine.v1.GetJobResponse.started_at:type_name -> google.protobuf.Timestamp
+	73, // 54: graphengine.v1.GetJobResponse.finished_at:type_name -> google.protobuf.Timestamp
+	10, // 55: graphengine.v1.GetJobResponse.result:type_name -> graphengine.v1.ResultRef
+	18, // 56: graphengine.v1.GetJobResponse.status:type_name -> graphengine.v1.Status
+	11, // 57: graphengine.v1.CancelJobRequest.job:type_name -> graphengine.v1.JobRef
+	10, // 58: graphengine.v1.GetResultRequest.result:type_name -> graphengine.v1.ResultRef
+	57, // 59: graphengine.v1.ResultChunk.header:type_name -> graphengine.v1.ResultHeader
+	58, // 60: graphengine.v1.ResultChunk.u32:type_name -> graphengine.v1.U32Buffer
+	59, // 61: graphengine.v1.ResultChunk.u64:type_name -> graphengine.v1.U64Buffer
+	60, // 62: graphengine.v1.ResultChunk.f64:type_name -> graphengine.v1.F64Buffer
+	61, // 63: graphengine.v1.ResultChunk.bytes:type_name -> graphengine.v1.BytesBuffer
+	62, // 64: graphengine.v1.ResultChunk.shortest_path:type_name -> graphengine.v1.ShortestPathResult
+	63, // 65: graphengine.v1.ResultChunk.st_mincut:type_name -> graphengine.v1.STMinCutResult
+	64, // 66: graphengine.v1.ResultChunk.corridor:type_name -> graphengine.v1.CorridorResult
+	65, // 67: graphengine.v1.ResultChunk.kcore:type_name -> graphengine.v1.KCoreResult
+	66, // 68: graphengine.v1.ResultChunk.betweenness:type_name -> graphengine.v1.BetweennessResult
+	70, // 69: graphengine.v1.ResultHeader.meta:type_name -> graphengine.v1.ResultHeader.MetaEntry
+	9,  // 70: graphengine.v1.CorridorResult.view:type_name -> graphengine.v1.ViewRef
+	71, // 71: graphengine.v1.CorridorResult.meta:type_name -> graphengine.v1.CorridorResult.MetaEntry
+	9,  // 72: graphengine.v1.ReleaseRequest.view:type_name -> graphengine.v1.ViewRef
+	10, // 73: graphengine.v1.ReleaseRequest.result:type_name -> graphengine.v1.ResultRef
+	12, // 74: graphengine.v1.GraphEngine.BeginBuild:input_type -> graphengine.v1.BeginBuildRequest
+	14, // 75: graphengine.v1.GraphEngine.Upload:input_type -> graphengine.v1.UploadRequest
+	16, // 76: graphengine.v1.GraphEngine.PublishBuild:input_type -> graphengine.v1.PublishBuildRequest
+	25, // 77: graphengine.v1.GraphEngine.CreateView:input_type -> graphengine.v1.CreateViewRequest
+	37, // 78: graphengine.v1.GraphEngine.Run:input_type -> graphengine.v1.RunRequest
+	51, // 79: graphengine.v1.GraphEngine.GetJob:input_type -> graphengine.v1.GetJobRequest
+	53, // 80: graphengine.v1.GraphEngine.CancelJob:input_type -> graphengine.v1.CancelJobRequest
+	55, // 81: graphengine.v1.GraphEngine.GetResult:input_type -> graphengine.v1.GetResultRequest
+	67, // 82: graphengine.v1.GraphEngine.Release:input_type -> graphengine.v1.ReleaseRequest
+	13, // 83: graphengine.v1.GraphEngine.BeginBuild:output_type -> graphengine.v1.BeginBuildResponse
+	15, // 84: graphengine.v1.GraphEngine.Upload:output_type -> graphengine.v1.UploadResponse
+	17, // 85: graphengine.v1.GraphEngine.PublishBuild:output_type -> graphengine.v1.PublishBuildResponse
+	26, // 86: graphengine.v1.GraphEngine.CreateView:output_type -> graphengine.v1.CreateViewResponse
+	38, // 87: graphengine.v1.GraphEngine.Run:output_type -> graphengine.v1.RunResponse
+	52, // 88: graphengine.v1.GraphEngine.GetJob:output_type -> graphengine.v1.GetJobResponse
+	54, // 89: graphengine.v1.GraphEngine.CancelJob:output_type -> graphengine.v1.CancelJobResponse
+	56, // 90: graphengine.v1.GraphEngine.GetResult:output_type -> graphengine.v1.ResultChunk
+	68, // 91: graphengine.v1.GraphEngine.Release:output_type -> graphengine.v1.ReleaseResponse
+	83, // [83:92] is the sub-list for method output_type
+	74, // [74:83] is the sub-list for method input_type
+	74, // [74:74] is the sub-list for extension type_name
+	74, // [74:74] is the sub-list for extension extendee
+	0,  // [0:74] is the sub-list for field type_name
 }
 
 func init() { file_graphengine_v1_graph_engine_proto_init() }
@@ -4896,8 +5197,10 @@ func file_graphengine_v1_graph_engine_proto_init() {
 		(*AlgoSpec_Neighborhood)(nil),
 		(*AlgoSpec_StMincut)(nil),
 		(*AlgoSpec_Corridor)(nil),
+		(*AlgoSpec_Kcore)(nil),
+		(*AlgoSpec_Betweenness)(nil),
 	}
-	file_graphengine_v1_graph_engine_proto_msgTypes[46].OneofWrappers = []any{
+	file_graphengine_v1_graph_engine_proto_msgTypes[48].OneofWrappers = []any{
 		(*ResultChunk_Header)(nil),
 		(*ResultChunk_U32)(nil),
 		(*ResultChunk_U64)(nil),
@@ -4906,9 +5209,11 @@ func file_graphengine_v1_graph_engine_proto_init() {
 		(*ResultChunk_ShortestPath)(nil),
 		(*ResultChunk_StMincut)(nil),
 		(*ResultChunk_Corridor)(nil),
+		(*ResultChunk_Kcore)(nil),
+		(*ResultChunk_Betweenness)(nil),
 		(*ResultChunk_Done)(nil),
 	}
-	file_graphengine_v1_graph_engine_proto_msgTypes[55].OneofWrappers = []any{
+	file_graphengine_v1_graph_engine_proto_msgTypes[59].OneofWrappers = []any{
 		(*ReleaseRequest_View)(nil),
 		(*ReleaseRequest_Result)(nil),
 	}
@@ -4918,7 +5223,7 @@ func file_graphengine_v1_graph_engine_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_graphengine_v1_graph_engine_proto_rawDesc), len(file_graphengine_v1_graph_engine_proto_rawDesc)),
 			NumEnums:      8,
-			NumMessages:   60,
+			NumMessages:   64,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

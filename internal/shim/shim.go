@@ -1,5 +1,3 @@
-//go:build cgo && igraph
-
 // Package shim provides Go bindings to the igraph C shim layer.
 // This package isolates cgo code and provides a clean Go API for graph algorithms.
 //
@@ -8,10 +6,10 @@ package shim
 
 /*
 #cgo pkg-config: igraph
-#cgo CFLAGS: -I${SRCDIR}/cgo
-#cgo LDFLAGS: -L${SRCDIR}/cgo -lm
+#cgo CFLAGS: -I${SRCDIR}
+#cgo LDFLAGS: -lm
 
-#include "cgo/ge_igraph_shim.h"
+#include "ge_igraph_shim.h"
 #include <stdlib.h>
 #include <string.h>
 */
@@ -60,6 +58,32 @@ func statusToError(status C.ge_status_t) error {
 		}
 		return fmt.Errorf("shim error %d", status)
 	}
+}
+
+// -----------------------------------------------------------------------------
+// Availability
+// -----------------------------------------------------------------------------
+
+// IsAvailable returns true if the igraph shim is available.
+// Always returns true since igraph is required.
+func IsAvailable() bool {
+	return true
+}
+
+// ShimVersion returns the version of the C shim library.
+func ShimVersion() string {
+	return C.GoString(C.ge_shim_version())
+}
+
+// IgraphVersion returns the version of the igraph library.
+func IgraphVersion() string {
+	return C.GoString(C.ge_igraph_version())
+}
+
+// IsThreadSafe returns true if igraph was built with thread-local storage (TLS) enabled.
+// Thread-safe igraph is required for concurrent graph operations.
+func IsThreadSafe() bool {
+	return C.ge_is_thread_safe() != 0
 }
 
 // -----------------------------------------------------------------------------
@@ -1334,15 +1358,196 @@ func (g *Graph) CommunitiesLouvainOnView(v *View, resolution float64) (*Communit
 }
 
 // -----------------------------------------------------------------------------
-// Version info
+// Algorithm: K-Core Decomposition
 // -----------------------------------------------------------------------------
 
-// ShimVersion returns the version of the C shim library.
-func ShimVersion() string {
-	return C.GoString(C.ge_shim_version())
+// KCoreResult contains the result of a k-core decomposition.
+type KCoreResult struct {
+	Coreness []uint32 // Coreness value for each vertex
+	MaxCore  uint32   // Maximum k found
 }
 
-// IgraphVersion returns the version of the igraph library.
-func IgraphVersion() string {
-	return C.GoString(C.ge_igraph_version())
+// KCore computes the k-core decomposition.
+// The coreness of a vertex is the largest k such that the vertex
+// belongs to a k-core.
+func (g *Graph) KCore() (*KCoreResult, error) {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	if g.closed || g.ptr == nil {
+		return nil, ErrShimClosed
+	}
+
+	var out *C.ge_result_t
+	status := C.ge_run_kcore(g.ptr, &out)
+	if status != C.GE_OK {
+		return nil, statusToError(status)
+	}
+
+	result := &Result{ptr: out}
+	defer result.Close()
+
+	coreness, err := result.GetU32("coreness")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get coreness: %w", err)
+	}
+
+	maxCore, err := result.GetU32("max_core")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get max_core: %w", err)
+	}
+
+	return &KCoreResult{
+		Coreness: coreness,
+		MaxCore:  maxCore[0],
+	}, nil
+}
+
+// KCoreOnView computes k-core decomposition on a view.
+func (g *Graph) KCoreOnView(v *View) (*KCoreResult, error) {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	if g.closed || g.ptr == nil {
+		return nil, ErrShimClosed
+	}
+
+	v.mu.RLock()
+	defer v.mu.RUnlock()
+
+	if v.closed || v.ptr == nil {
+		return nil, ErrShimClosed
+	}
+
+	var out *C.ge_result_t
+	status := C.ge_run_kcore_view(g.ptr, v.ptr, &out)
+	if status != C.GE_OK {
+		return nil, statusToError(status)
+	}
+
+	result := &Result{ptr: out}
+	defer result.Close()
+
+	coreness, err := result.GetU32("coreness")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get coreness: %w", err)
+	}
+
+	maxCore, err := result.GetU32("max_core")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get max_core: %w", err)
+	}
+
+	return &KCoreResult{
+		Coreness: coreness,
+		MaxCore:  maxCore[0],
+	}, nil
+}
+
+// -----------------------------------------------------------------------------
+// Algorithm: Betweenness Centrality
+// -----------------------------------------------------------------------------
+
+// BetweennessResult contains the result of betweenness centrality computation.
+type BetweennessResult struct {
+	Scores []float64 // Betweenness score for each vertex
+}
+
+// Betweenness computes betweenness centrality for all vertices.
+// sampleSize: number of source vertices to sample (0 = all).
+// normalized: whether to normalize the scores.
+// weights: optional edge weights (nil for unweighted).
+func (g *Graph) Betweenness(sampleSize uint32, normalized bool, weights []float64) (*BetweennessResult, error) {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	if g.closed || g.ptr == nil {
+		return nil, ErrShimClosed
+	}
+
+	var weightsPtr *C.double
+	if len(weights) > 0 {
+		weightsPtr = (*C.double)(unsafe.Pointer(&weights[0]))
+	}
+
+	normalizedInt := 0
+	if normalized {
+		normalizedInt = 1
+	}
+
+	var out *C.ge_result_t
+	status := C.ge_run_betweenness(
+		g.ptr,
+		C.uint32_t(sampleSize),
+		C.int(normalizedInt),
+		weightsPtr,
+		&out,
+	)
+	if status != C.GE_OK {
+		return nil, statusToError(status)
+	}
+
+	result := &Result{ptr: out}
+	defer result.Close()
+
+	scores, err := result.GetF64("scores")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get scores: %w", err)
+	}
+
+	return &BetweennessResult{
+		Scores: scores,
+	}, nil
+}
+
+// BetweennessOnView computes betweenness centrality on a view.
+func (g *Graph) BetweennessOnView(v *View, sampleSize uint32, normalized bool, weights []float64) (*BetweennessResult, error) {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	if g.closed || g.ptr == nil {
+		return nil, ErrShimClosed
+	}
+
+	v.mu.RLock()
+	defer v.mu.RUnlock()
+
+	if v.closed || v.ptr == nil {
+		return nil, ErrShimClosed
+	}
+
+	var weightsPtr *C.double
+	if len(weights) > 0 {
+		weightsPtr = (*C.double)(unsafe.Pointer(&weights[0]))
+	}
+
+	normalizedInt := 0
+	if normalized {
+		normalizedInt = 1
+	}
+
+	var out *C.ge_result_t
+	status := C.ge_run_betweenness_view(
+		g.ptr,
+		v.ptr,
+		C.uint32_t(sampleSize),
+		C.int(normalizedInt),
+		weightsPtr,
+		&out,
+	)
+	if status != C.GE_OK {
+		return nil, statusToError(status)
+	}
+
+	result := &Result{ptr: out}
+	defer result.Close()
+
+	scores, err := result.GetF64("scores")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get scores: %w", err)
+	}
+
+	return &BetweennessResult{
+		Scores: scores,
+	}, nil
 }

@@ -10,6 +10,8 @@
 #include <string.h>
 #include <stdio.h>
 #include <pthread.h>
+#include <math.h>
+#include <time.h>
 
 // -----------------------------------------------------------------------------
 // Version info
@@ -35,6 +37,54 @@ const char* ge_last_error(void) {
         return NULL;
     }
     return ge_error_buf;
+}
+
+// -----------------------------------------------------------------------------
+// Thread-local random number generator
+// -----------------------------------------------------------------------------
+// The default igraph RNG is not thread-safe. Each thread must have its own
+// RNG instance to avoid data races during concurrent graph operations.
+
+static __thread igraph_rng_t* ge_thread_rng = NULL;
+static __thread int ge_rng_initialized = 0;
+
+// Ensure the current thread has its own RNG initialized.
+// This function is idempotent and safe to call multiple times.
+static void ge_ensure_thread_rng(void) {
+    if (ge_rng_initialized) {
+        return;
+    }
+    
+    ge_thread_rng = (igraph_rng_t*)malloc(sizeof(igraph_rng_t));
+    if (ge_thread_rng == NULL) {
+        // Fall back to default RNG if allocation fails
+        return;
+    }
+    
+    // Initialize with Mersenne Twister algorithm
+    if (igraph_rng_init(ge_thread_rng, &igraph_rngtype_mt19937) != IGRAPH_SUCCESS) {
+        free(ge_thread_rng);
+        ge_thread_rng = NULL;
+        return;
+    }
+    
+    // Seed with a combination of thread ID and time for uniqueness
+    unsigned long seed = (unsigned long)pthread_self() ^ (unsigned long)time(NULL);
+    igraph_rng_seed(ge_thread_rng, seed);
+    
+    // Set this thread's RNG as the default for igraph operations
+    igraph_rng_set_default(ge_thread_rng);
+    
+    ge_rng_initialized = 1;
+}
+
+// Check if igraph was built with thread-safety (TLS) enabled
+int ge_is_thread_safe(void) {
+#ifdef IGRAPH_THREAD_SAFE
+    return IGRAPH_THREAD_SAFE;
+#else
+    return 0;
+#endif
 }
 
 // -----------------------------------------------------------------------------
@@ -169,6 +219,9 @@ static igraph_neimode_t mode_to_igraph(ge_mode_t mode) {
 // -----------------------------------------------------------------------------
 
 ge_status_t ge_graph_create(const ge_edge_list_t* edges, ge_graph_t** out) {
+    // Ensure thread-local RNG is initialized for thread safety
+    ge_ensure_thread_rng();
+    
     if (!edges || !out) {
         set_error("invalid argument: edges or out is NULL");
         return GE_ERR_INVALID_ARG;
@@ -613,16 +666,27 @@ ge_status_t ge_run_shortest_path(
         weights_ptr = &weights_vec;
     }
     
-    // Run shortest path
-    err = igraph_get_shortest_path(
-        &g->g,
-        &vertices,
-        &edges,
-        (igraph_integer_t)src,
-        (igraph_integer_t)dst,
-        weights_ptr,
-        IGRAPH_OUT
-    );
+    // Run shortest path (use dijkstra for weighted, BFS for unweighted)
+    if (weights_ptr) {
+        err = igraph_get_shortest_path_dijkstra(
+            &g->g,
+            &vertices,
+            &edges,
+            (igraph_integer_t)src,
+            (igraph_integer_t)dst,
+            weights_ptr,
+            IGRAPH_OUT
+        );
+    } else {
+        err = igraph_get_shortest_path(
+            &g->g,
+            &vertices,
+            &edges,
+            (igraph_integer_t)src,
+            (igraph_integer_t)dst,
+            IGRAPH_OUT
+        );
+    }
     
     if (weights_ptr) {
         igraph_vector_destroy(&weights_vec);
@@ -701,8 +765,8 @@ ge_status_t ge_run_shortest_path(
         }
     }
     
-    // Compute total cost
-    double total_cost = 0.0;
+    // Compute total cost (infinity if no path)
+    double total_cost = found ? 0.0 : INFINITY;
     if (found) {
         if (weights_or_null) {
             size_t edge_len = (size_t)igraph_vector_int_size(&edges);
@@ -1494,6 +1558,9 @@ ge_status_t ge_run_communities_leiden(
     double resolution,
     ge_result_t** out
 ) {
+    // Ensure thread-local RNG is initialized (Leiden uses randomness)
+    ge_ensure_thread_rng();
+    
     if (!g || !out) {
         set_error("invalid argument");
         return GE_ERR_INVALID_ARG;
@@ -1605,16 +1672,26 @@ ge_status_t ge_run_communities_louvain(
     double resolution,
     ge_result_t** out
 ) {
+    // Ensure thread-local RNG is initialized (Louvain uses randomness)
+    ge_ensure_thread_rng();
+    
     if (!g || !out) {
         set_error("invalid argument");
         return GE_ERR_INVALID_ARG;
     }
     
     igraph_vector_int_t membership;
-    igraph_real_t modularity;
+    igraph_vector_t modularity_vec;
     
     igraph_error_t err = igraph_vector_int_init(&membership, 0);
     if (err != IGRAPH_SUCCESS) {
+        set_error("igraph error: %d", err);
+        return GE_ERR_IGRAPH;
+    }
+    
+    err = igraph_vector_init(&modularity_vec, 0);
+    if (err != IGRAPH_SUCCESS) {
+        igraph_vector_int_destroy(&membership);
         set_error("igraph error: %d", err);
         return GE_ERR_IGRAPH;
     }
@@ -1625,8 +1702,13 @@ ge_status_t ge_run_communities_louvain(
         resolution,
         &membership,
         NULL,  // memberships (intermediate)
-        &modularity
+        &modularity_vec
     );
+    
+    // Get final modularity (last element in vector)
+    igraph_real_t modularity = igraph_vector_size(&modularity_vec) > 0 ? 
+        VECTOR(modularity_vec)[igraph_vector_size(&modularity_vec) - 1] : 0.0;
+    igraph_vector_destroy(&modularity_vec);
     
     if (err != IGRAPH_SUCCESS) {
         igraph_vector_int_destroy(&membership);
@@ -1706,6 +1788,265 @@ ge_status_t ge_run_communities_louvain_view(
     temp_g.directed = g->directed;
     
     return ge_run_communities_louvain(&temp_g, resolution, out);
+}
+
+// -----------------------------------------------------------------------------
+// Algorithm: K-Core Decomposition
+// -----------------------------------------------------------------------------
+
+ge_status_t ge_run_kcore(
+    const ge_graph_t* g,
+    ge_result_t** out
+) {
+    if (!g || !out) {
+        set_error("invalid argument");
+        return GE_ERR_INVALID_ARG;
+    }
+    
+    igraph_vector_int_t coreness;
+    igraph_error_t err = igraph_vector_int_init(&coreness, 0);
+    if (err != IGRAPH_SUCCESS) {
+        set_error("igraph error: %d", err);
+        return GE_ERR_IGRAPH;
+    }
+    
+    err = igraph_coreness(&g->g, &coreness, IGRAPH_ALL);
+    if (err != IGRAPH_SUCCESS) {
+        igraph_vector_int_destroy(&coreness);
+        set_error("igraph error computing coreness: %d", err);
+        return GE_ERR_IGRAPH;
+    }
+    
+    ge_result_t* r = create_result();
+    if (!r) {
+        igraph_vector_int_destroy(&coreness);
+        set_error("out of memory");
+        return GE_ERR_OUT_OF_MEMORY;
+    }
+    
+    // Copy coreness values and find max
+    size_t n = (size_t)igraph_vector_int_size(&coreness);
+    uint32_t* coreness_u32 = (uint32_t*)malloc(n * sizeof(uint32_t));
+    if (!coreness_u32 && n > 0) {
+        igraph_vector_int_destroy(&coreness);
+        ge_result_destroy(r);
+        set_error("out of memory");
+        return GE_ERR_OUT_OF_MEMORY;
+    }
+    
+    uint32_t max_core = 0;
+    for (size_t i = 0; i < n; i++) {
+        coreness_u32[i] = (uint32_t)VECTOR(coreness)[i];
+        if (coreness_u32[i] > max_core) {
+            max_core = coreness_u32[i];
+        }
+    }
+    igraph_vector_int_destroy(&coreness);
+    
+    ge_status_t status = add_buffer_u32(r, "coreness", coreness_u32, n);
+    free(coreness_u32);
+    if (status != GE_OK) {
+        ge_result_destroy(r);
+        return status;
+    }
+    
+    status = add_buffer_u32(r, "max_core", &max_core, 1);
+    if (status != GE_OK) {
+        ge_result_destroy(r);
+        return status;
+    }
+    
+    *out = r;
+    return GE_OK;
+}
+
+ge_status_t ge_run_kcore_view(
+    const ge_graph_t* g,
+    const ge_view_t* v,
+    ge_result_t** out
+) {
+    if (!g || !v || !out) {
+        set_error("invalid argument");
+        return GE_ERR_INVALID_ARG;
+    }
+    
+    ge_graph_t temp_g;
+    temp_g.g = v->g;
+    temp_g.n_vertices = v->n_vertices;
+    temp_g.m_edges = v->m_edges;
+    temp_g.directed = g->directed;
+    
+    return ge_run_kcore(&temp_g, out);
+}
+
+// -----------------------------------------------------------------------------
+// Algorithm: Betweenness Centrality
+// -----------------------------------------------------------------------------
+
+ge_status_t ge_run_betweenness(
+    const ge_graph_t* g,
+    uint32_t sample_size,
+    int normalized,
+    const double* weights_or_null,
+    ge_result_t** out
+) {
+    if (!g || !out) {
+        set_error("invalid argument");
+        return GE_ERR_INVALID_ARG;
+    }
+    
+    igraph_vector_t betweenness;
+    igraph_error_t err = igraph_vector_init(&betweenness, 0);
+    if (err != IGRAPH_SUCCESS) {
+        set_error("igraph error: %d", err);
+        return GE_ERR_IGRAPH;
+    }
+    
+    // Set up weights if provided
+    igraph_vector_t weights_vec;
+    igraph_vector_t* weights_ptr = NULL;
+    
+    if (weights_or_null) {
+        err = igraph_vector_init(&weights_vec, (igraph_integer_t)g->m_edges);
+        if (err != IGRAPH_SUCCESS) {
+            igraph_vector_destroy(&betweenness);
+            set_error("igraph error initializing weights: %d", err);
+            return GE_ERR_IGRAPH;
+        }
+        for (size_t i = 0; i < g->m_edges; i++) {
+            VECTOR(weights_vec)[i] = weights_or_null[i];
+        }
+        weights_ptr = &weights_vec;
+    }
+    
+    if (sample_size > 0 && sample_size < g->n_vertices) {
+        // Sampled betweenness using a subset of vertices
+        igraph_vs_t vids;
+        igraph_vector_int_t sources;
+        
+        err = igraph_vector_int_init(&sources, sample_size);
+        if (err != IGRAPH_SUCCESS) {
+            if (weights_ptr) igraph_vector_destroy(&weights_vec);
+            igraph_vector_destroy(&betweenness);
+            set_error("igraph error: %d", err);
+            return GE_ERR_IGRAPH;
+        }
+        
+        // Random sampling of source vertices
+        for (uint32_t i = 0; i < sample_size; i++) {
+            VECTOR(sources)[i] = (igraph_integer_t)(rand() % g->n_vertices);
+        }
+        
+        err = igraph_vs_vector(&vids, &sources);
+        if (err != IGRAPH_SUCCESS) {
+            igraph_vector_int_destroy(&sources);
+            if (weights_ptr) igraph_vector_destroy(&weights_vec);
+            igraph_vector_destroy(&betweenness);
+            set_error("igraph error: %d", err);
+            return GE_ERR_IGRAPH;
+        }
+        
+        // Use igraph_betweenness_subset for sampled computation
+        err = igraph_betweenness_subset(
+            &g->g,
+            &betweenness,
+            igraph_vss_all(),  // vertices to compute betweenness for
+            g->directed ? IGRAPH_DIRECTED : IGRAPH_UNDIRECTED,
+            vids,              // source vertices for paths
+            igraph_vss_all(),  // target vertices for paths
+            weights_ptr
+        );
+        
+        igraph_vs_destroy(&vids);
+        igraph_vector_int_destroy(&sources);
+    } else {
+        // Full betweenness computation
+        err = igraph_betweenness(
+            &g->g,
+            &betweenness,
+            igraph_vss_all(),
+            g->directed ? IGRAPH_DIRECTED : IGRAPH_UNDIRECTED,
+            weights_ptr
+        );
+    }
+    
+    if (weights_ptr) {
+        igraph_vector_destroy(&weights_vec);
+    }
+    
+    if (err != IGRAPH_SUCCESS) {
+        igraph_vector_destroy(&betweenness);
+        set_error("igraph error computing betweenness: %d", err);
+        return GE_ERR_IGRAPH;
+    }
+    
+    // Normalize if requested
+    if (normalized && g->n_vertices > 2) {
+        igraph_integer_t n = (igraph_integer_t)g->n_vertices;
+        double norm_factor;
+        if (g->directed) {
+            norm_factor = 1.0 / ((n - 1) * (n - 2));
+        } else {
+            norm_factor = 2.0 / ((n - 1) * (n - 2));
+        }
+        for (igraph_integer_t i = 0; i < igraph_vector_size(&betweenness); i++) {
+            VECTOR(betweenness)[i] *= norm_factor;
+        }
+    }
+    
+    ge_result_t* r = create_result();
+    if (!r) {
+        igraph_vector_destroy(&betweenness);
+        set_error("out of memory");
+        return GE_ERR_OUT_OF_MEMORY;
+    }
+    
+    // Copy scores
+    size_t n = (size_t)igraph_vector_size(&betweenness);
+    double* scores = (double*)malloc(n * sizeof(double));
+    if (!scores && n > 0) {
+        igraph_vector_destroy(&betweenness);
+        ge_result_destroy(r);
+        set_error("out of memory");
+        return GE_ERR_OUT_OF_MEMORY;
+    }
+    
+    for (size_t i = 0; i < n; i++) {
+        scores[i] = VECTOR(betweenness)[i];
+    }
+    igraph_vector_destroy(&betweenness);
+    
+    ge_status_t status = add_buffer_f64(r, "scores", scores, n);
+    free(scores);
+    if (status != GE_OK) {
+        ge_result_destroy(r);
+        return status;
+    }
+    
+    *out = r;
+    return GE_OK;
+}
+
+ge_status_t ge_run_betweenness_view(
+    const ge_graph_t* g,
+    const ge_view_t* v,
+    uint32_t sample_size,
+    int normalized,
+    const double* weights_or_null,
+    ge_result_t** out
+) {
+    if (!g || !v || !out) {
+        set_error("invalid argument");
+        return GE_ERR_INVALID_ARG;
+    }
+    
+    ge_graph_t temp_g;
+    temp_g.g = v->g;
+    temp_g.n_vertices = v->n_vertices;
+    temp_g.m_edges = v->m_edges;
+    temp_g.directed = g->directed;
+    
+    return ge_run_betweenness(&temp_g, sample_size, normalized, weights_or_null, out);
 }
 
 // -----------------------------------------------------------------------------

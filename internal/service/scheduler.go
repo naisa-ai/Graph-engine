@@ -265,10 +265,22 @@ func (s *Scheduler) dispatcher() {
 // dispatchPending attempts to dispatch pending jobs.
 func (s *Scheduler) dispatchPending() {
 	for {
+		// Try to acquire semaphore first (non-blocking)
+		// This prevents a race where we pop from queue before knowing if we can run
+		select {
+		case s.sem <- struct{}{}:
+			// Got a slot, now get a job from the queue
+		default:
+			// No slot available, return
+			return
+		}
+
 		// Get next job from queue
 		s.queueMu.Lock()
 		if len(s.queue) == 0 {
 			s.queueMu.Unlock()
+			// Release the semaphore we just acquired
+			<-s.sem
 			return
 		}
 		job := s.queue[0]
@@ -277,22 +289,14 @@ func (s *Scheduler) dispatchPending() {
 
 		// Check if job was canceled
 		if job.State == JobStateCanceled {
+			// Release semaphore and try next
+			<-s.sem
 			continue
 		}
 
-		// Try to acquire semaphore (non-blocking check first)
-		select {
-		case s.sem <- struct{}{}:
-			// Got a slot, execute the job
-			s.wg.Add(1)
-			go s.executeJob(job)
-		default:
-			// No slot available, put job back at front
-			s.queueMu.Lock()
-			s.queue = append([]*Job{job}, s.queue...)
-			s.queueMu.Unlock()
-			return
-		}
+		// Execute the job
+		s.wg.Add(1)
+		go s.executeJob(job)
 	}
 }
 

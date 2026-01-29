@@ -1,5 +1,6 @@
-# Build stage
-FROM golang:1.25-alpine AS builder
+# Build stage - uses cached base image if available
+ARG BASE_IMAGE=graph-engine-e2e-go-base:latest
+FROM ${BASE_IMAGE} AS builder
 
 WORKDIR /app
 
@@ -9,7 +10,7 @@ COPY . /app/graph-engine/
 # Build the e2e client
 WORKDIR /app/graph-engine/e2e/client
 
-# Download dependencies
+# Download dependencies (fast if base has them cached)
 RUN go mod download
 
 # Build the binary

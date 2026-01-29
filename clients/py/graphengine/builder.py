@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2025 Naisa AI, Inc.
+
 """Graph and View builders for the Graph-engine client."""
 
 from __future__ import annotations

@@ -1,6 +1,6 @@
 module github.com/naisa-ai/graph-engine/e2e/client
 
-go 1.25.5
+go 1.24.0
 
 require (
 	github.com/naisa-ai/graph-engine v0.0.0

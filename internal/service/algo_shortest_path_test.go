@@ -4,7 +4,18 @@ import (
 	"math"
 	"testing"
 	"time"
+
+	"github.com/naisa-ai/graph-engine/internal/shim"
 )
+
+// createShimGraph creates a shim graph for testing.
+func createShimGraph(version *GraphVersion) *shim.Graph {
+	g, err := shim.NewGraph(uint32(version.VCount), version.EdgeSrc, version.EdgeDst, version.Directed)
+	if err != nil {
+		return nil
+	}
+	return g
+}
 
 // createTestGraphForShortestPath creates a graph for shortest path testing.
 // Graph structure (unweighted):
@@ -45,8 +56,14 @@ func createTestGraphForShortestPath(weighted bool) *GraphVersion {
 
 func TestComputeShortestPath_SameNode(t *testing.T) {
 	version := createTestGraphForShortestPath(false)
+	g := createShimGraph(version)
+	if g == nil {
+		t.Fatal("failed to create shim graph")
+	}
+	defer g.Close()
+	cfg := &ShortestPathConfig{ShimGraph: g}
 
-	result, err := ComputeShortestPath(version, nil, 100, 100, false, true, true, nil)
+	result, err := ComputeShortestPath(version, nil, 100, 100, false, true, true, cfg)
 	if err != nil {
 		t.Fatalf("ComputeShortestPath failed: %v", err)
 	}
@@ -64,8 +81,14 @@ func TestComputeShortestPath_SameNode(t *testing.T) {
 
 func TestComputeShortestPath_Adjacent(t *testing.T) {
 	version := createTestGraphForShortestPath(false)
+	g := createShimGraph(version)
+	if g == nil {
+		t.Fatal("failed to create shim graph")
+	}
+	defer g.Close()
+	cfg := &ShortestPathConfig{ShimGraph: g}
 
-	result, err := ComputeShortestPath(version, nil, 100, 101, false, true, true, nil)
+	result, err := ComputeShortestPath(version, nil, 100, 101, false, true, true, cfg)
 	if err != nil {
 		t.Fatalf("ComputeShortestPath failed: %v", err)
 	}
@@ -83,9 +106,15 @@ func TestComputeShortestPath_Adjacent(t *testing.T) {
 
 func TestComputeShortestPath_BFS_Unweighted(t *testing.T) {
 	version := createTestGraphForShortestPath(false)
+	g := createShimGraph(version)
+	if g == nil {
+		t.Fatal("failed to create shim graph")
+	}
+	defer g.Close()
+	cfg := &ShortestPathConfig{ShimGraph: g}
 
 	// 100 to 105: shortest path is 100->101->102->105 or 100->103->104->105 (3 hops)
-	result, err := ComputeShortestPath(version, nil, 100, 105, false, true, true, nil)
+	result, err := ComputeShortestPath(version, nil, 100, 105, false, true, true, cfg)
 	if err != nil {
 		t.Fatalf("ComputeShortestPath failed: %v", err)
 	}
@@ -103,13 +132,19 @@ func TestComputeShortestPath_BFS_Unweighted(t *testing.T) {
 
 func TestComputeShortestPath_Dijkstra_Weighted(t *testing.T) {
 	version := createTestGraphForShortestPath(true)
+	g := createShimGraph(version)
+	if g == nil {
+		t.Fatal("failed to create shim graph")
+	}
+	defer g.Close()
+	cfg := &ShortestPathConfig{ShimGraph: g}
 
 	// 100 to 105 with weights:
 	// Path 1: 100->101->102->105 = 1+1+2 = 4
 	// Path 2: 100->103->104->105 = 2+1+2 = 5
 	// Path 3: 100->101->104->105 = 1+2+2 = 5
 	// Shortest is path 1 with cost 4
-	result, err := ComputeShortestPath(version, nil, 100, 105, true, true, true, nil)
+	result, err := ComputeShortestPath(version, nil, 100, 105, true, true, true, cfg)
 	if err != nil {
 		t.Fatalf("ComputeShortestPath failed: %v", err)
 	}
@@ -134,8 +169,14 @@ func TestComputeShortestPath_NoPath(t *testing.T) {
 		EdgesDstU64: []uint64{101, 201},
 	}
 	version, _ := NewGraphVersion("v1", "disconnected", false, build)
+	g := createShimGraph(version)
+	if g == nil {
+		t.Fatal("failed to create shim graph")
+	}
+	defer g.Close()
+	cfg := &ShortestPathConfig{ShimGraph: g}
 
-	result, err := ComputeShortestPath(version, nil, 100, 200, false, true, true, nil)
+	result, err := ComputeShortestPath(version, nil, 100, 200, false, true, true, cfg)
 	if err != nil {
 		t.Fatalf("ComputeShortestPath failed: %v", err)
 	}
@@ -168,6 +209,12 @@ func TestComputeShortestPath_InvalidTarget(t *testing.T) {
 
 func TestComputeShortestPath_WithView(t *testing.T) {
 	version := createTestGraphForShortestPath(false)
+	g := createShimGraph(version)
+	if g == nil {
+		t.Fatal("failed to create shim graph")
+	}
+	defer g.Close()
+	cfg := &ShortestPathConfig{ShimGraph: g}
 
 	// Create a view that excludes the middle row (103, 104, 105)
 	view := NewView(version)
@@ -175,7 +222,7 @@ func TestComputeShortestPath_WithView(t *testing.T) {
 	view.updateCounts()
 
 	// Now 100 to 102 should only go through top row
-	result, err := ComputeShortestPath(version, view, 100, 102, false, true, true, nil)
+	result, err := ComputeShortestPath(version, view, 100, 102, false, true, true, cfg)
 	if err != nil {
 		t.Fatalf("ComputeShortestPath failed: %v", err)
 	}
@@ -190,9 +237,15 @@ func TestComputeShortestPath_WithView(t *testing.T) {
 
 func TestComputeShortestPath_ReturnOptions(t *testing.T) {
 	version := createTestGraphForShortestPath(false)
+	g := createShimGraph(version)
+	if g == nil {
+		t.Fatal("failed to create shim graph")
+	}
+	defer g.Close()
+	cfg := &ShortestPathConfig{ShimGraph: g}
 
 	// Without returning vertices
-	result, err := ComputeShortestPath(version, nil, 100, 102, false, true, false, nil)
+	result, err := ComputeShortestPath(version, nil, 100, 102, false, true, false, cfg)
 	if err != nil {
 		t.Fatalf("ComputeShortestPath failed: %v", err)
 	}
@@ -204,7 +257,7 @@ func TestComputeShortestPath_ReturnOptions(t *testing.T) {
 	}
 
 	// Without returning edges
-	result, err = ComputeShortestPath(version, nil, 100, 102, false, false, true, nil)
+	result, err = ComputeShortestPath(version, nil, 100, 102, false, false, true, cfg)
 	if err != nil {
 		t.Fatalf("ComputeShortestPath failed: %v", err)
 	}
@@ -218,11 +271,17 @@ func TestComputeShortestPath_ReturnOptions(t *testing.T) {
 
 func TestComputeShortestPathBatch(t *testing.T) {
 	version := createTestGraphForShortestPath(false)
+	g := createShimGraph(version)
+	if g == nil {
+		t.Fatal("failed to create shim graph")
+	}
+	defer g.Close()
+	cfg := &ShortestPathConfig{ShimGraph: g}
 
 	sources := []uint64{100, 100, 101}
 	targets := []uint64{102, 103, 105}
 
-	results, err := ComputeShortestPathBatch(version, nil, sources, targets, false, nil)
+	results, err := ComputeShortestPathBatch(version, nil, sources, targets, false, cfg)
 	if err != nil {
 		t.Fatalf("ComputeShortestPathBatch failed: %v", err)
 	}
@@ -257,12 +316,21 @@ func TestBFS_Correctness(t *testing.T) {
 	}
 
 	version, _ := NewGraphVersion("v1", "wheel", false, build)
+	g := createShimGraph(version)
+	if g == nil {
+		t.Fatal("failed to create shim graph")
+	}
+	defer g.Close()
+	cfg := &ShortestPathConfig{ShimGraph: g}
 
 	// From 101 to 103:
 	// Direct: 101->102->103 = 2 hops
 	// Through center: 101->100->103 = 2 hops
 	// Both are equal, so either is valid
-	result, _ := ComputeShortestPath(version, nil, 101, 103, false, true, true, nil)
+	result, err := ComputeShortestPath(version, nil, 101, 103, false, true, true, cfg)
+	if err != nil {
+		t.Fatalf("ComputeShortestPath failed: %v", err)
+	}
 
 	if !result.Found {
 		t.Error("path should be found")
@@ -292,12 +360,21 @@ func TestDijkstra_Correctness(t *testing.T) {
 	}
 
 	version, _ := NewGraphVersion("v1", "triangle", false, build)
+	g := createShimGraph(version)
+	if g == nil {
+		t.Fatal("failed to create shim graph")
+	}
+	defer g.Close()
+	cfg := &ShortestPathConfig{ShimGraph: g}
 
 	// From 100 to 103:
 	// Direct via 102: 5 + 1 = 6
 	// Via 101: 1 + 1 = 2
 	// Dijkstra should find the path via 101
-	result, _ := ComputeShortestPath(version, nil, 100, 103, true, true, true, nil)
+	result, err := ComputeShortestPath(version, nil, 100, 103, true, true, true, cfg)
+	if err != nil {
+		t.Fatalf("ComputeShortestPath failed: %v", err)
+	}
 
 	if !result.Found {
 		t.Error("path should be found")

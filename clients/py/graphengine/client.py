@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2025 Naisa AI, Inc.
+
 """Graph-engine client implementations."""
 
 from __future__ import annotations
@@ -25,6 +28,7 @@ from graphengine.exceptions import (
     wrap_grpc_error,
 )
 from graphengine.types import (
+    BetweennessResult,
     CacheStats,
     ComponentsResult,
     CorridorResult,
@@ -35,6 +39,7 @@ from graphengine.types import (
     GraphSummary,
     HealthStatus,
     JobRef,
+    KCoreResult,
     MinCutResult,
     PathResult,
     ResultRef,
@@ -807,6 +812,75 @@ class GraphEngineClient:
         job = self._run(graph, None, algo)
         result = self.wait_for_job(job)
         return self._collect_components_result(result)
+
+    def k_core(
+        self,
+        graph: GraphRef,
+        k: int = 0,
+    ) -> KCoreResult:
+        """Compute k-core decomposition.
+        
+        Args:
+            graph: Reference to the graph
+            k: Specific k value (0 = full decomposition)
+            
+        Returns:
+            KCoreResult with coreness values for all vertices
+        """
+        algo = gepb.AlgoSpec(
+            kcore=gepb.KCoreSpec(k=k)
+        )
+        job = self._run(graph, None, algo)
+        result = self.wait_for_job(job)
+        return self._collect_kcore_result(result)
+
+    def _collect_kcore_result(self, result: ResultRef) -> KCoreResult:
+        """Collect k-core result from chunks."""
+        kcore_result = KCoreResult()
+        for chunk in self._get_result_chunks(result):
+            if chunk.HasField("kcore"):
+                kc = chunk.kcore
+                kcore_result.coreness = list(kc.coreness)
+                kcore_result.max_core = kc.max_core
+        return kcore_result
+
+    def betweenness(
+        self,
+        graph: GraphRef,
+        sample_size: int = 0,
+        normalized: bool = False,
+        weight_column: str = "",
+    ) -> BetweennessResult:
+        """Compute betweenness centrality.
+        
+        Args:
+            graph: Reference to the graph
+            sample_size: Number of source vertices to sample (0 = all)
+            normalized: Whether to normalize scores
+            weight_column: Optional edge weight column
+            
+        Returns:
+            BetweennessResult with scores for all vertices
+        """
+        algo = gepb.AlgoSpec(
+            betweenness=gepb.BetweennessSpec(
+                sample_size=sample_size,
+                normalized=normalized,
+                weight_column=weight_column,
+            )
+        )
+        job = self._run(graph, None, algo)
+        result = self.wait_for_job(job)
+        return self._collect_betweenness_result(result)
+
+    def _collect_betweenness_result(self, result: ResultRef) -> BetweennessResult:
+        """Collect betweenness result from chunks."""
+        betw_result = BetweennessResult()
+        for chunk in self._get_result_chunks(result):
+            if chunk.HasField("betweenness"):
+                b = chunk.betweenness
+                betw_result.scores = list(b.scores)
+        return betw_result
 
     # =========================================================================
     # Job Management

@@ -1,0 +1,21 @@
+# =============================================================================
+# E2E Python Client Base Dockerfile
+# =============================================================================
+# Base image for Python e2e test client with packages pre-installed.
+# Caches pip packages so subsequent builds are fast.
+#
+# Build: docker build -f e2e/Dockerfile.py-base -t graph-engine-e2e-py-base .
+# =============================================================================
+
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install all Python dependencies
+RUN pip install --no-cache-dir \
+    grpcio>=1.60.0 \
+    protobuf>=4.0.0 \
+    grpcio-tools
+
+# Create directories for the client library
+RUN mkdir -p /app/clients/py /app/e2e/py-client

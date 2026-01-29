@@ -265,4 +265,4 @@ if err != nil {
 
 ## License
 
-Apache 2.0
+MIT - See [LICENSE](LICENSE)

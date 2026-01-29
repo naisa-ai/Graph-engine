@@ -1,10 +1,12 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 
 	gepb "github.com/naisa-ai/graph-engine/gen/graphengine/v1"
+	"github.com/naisa-ai/graph-engine/internal/shim"
 )
 
 // CorridorMethod represents the method used to construct a corridor.
@@ -28,6 +30,12 @@ type CorridorResult struct {
 	Meta map[string]string
 }
 
+// CorridorConfig holds configuration for corridor computation.
+type CorridorConfig struct {
+	// ShimGraph is the shim graph to use (required for SP and KSP computations).
+	ShimGraph *shim.Graph
+}
+
 // ComputeCorridor computes a corridor (focused subgraph) between two nodes.
 // The corridor includes nodes and edges around the path between source and target.
 func ComputeCorridor(
@@ -37,6 +45,7 @@ func ComputeCorridor(
 	method gepb.CorridorSpec_Method,
 	hops uint32,
 	k uint32, // for KSP_HULL
+	cfg *ShortestPathConfig, // required for shortest path computation
 ) (*CorridorResult, error) {
 	// Validate source and target
 	sourceIdx, ok := version.GetNodeIndex(sourceID)
@@ -60,18 +69,15 @@ func ComputeCorridor(
 
 	switch method {
 	case gepb.CorridorSpec_SHORTEST_PATH_HULL:
-		return buildShortestPathHull(version, view, sourceID, targetID, sourceIdx, targetIdx, hops)
+		return buildShortestPathHull(version, view, sourceID, targetID, sourceIdx, targetIdx, hops, cfg)
 	case gepb.CorridorSpec_KSP_HULL:
-		// KSP_HULL requires K-shortest paths algorithm (Phase 4)
-		// For now, fall back to SHORTEST_PATH_HULL with a warning
-		result, err := buildShortestPathHull(version, view, sourceID, targetID, sourceIdx, targetIdx, hops)
-		if err != nil {
-			return nil, err
+		// Use default k=3 if not specified
+		if k == 0 {
+			k = 3
 		}
-		result.Meta["warning"] = "KSP_HULL not yet implemented, using SHORTEST_PATH_HULL"
-		return result, nil
+		return buildKSPHull(version, view, sourceID, targetID, sourceIdx, targetIdx, hops, k, cfg)
 	case gepb.CorridorSpec_COMMUNITY_AWARE:
-		return buildCommunityAwareCorridor(version, view, sourceID, targetID, sourceIdx, targetIdx, hops)
+		return buildCommunityAwareCorridor(version, view, sourceID, targetID, sourceIdx, targetIdx, hops, cfg)
 	default:
 		return nil, fmt.Errorf("unknown corridor method: %v", method)
 	}
@@ -85,9 +91,10 @@ func buildShortestPathHull(
 	sourceID, targetID uint64,
 	sourceIdx, targetIdx uint32,
 	hops uint32,
+	cfg *ShortestPathConfig,
 ) (*CorridorResult, error) {
 	// Step 1: Find shortest path
-	pathResult, err := ComputeShortestPath(version, baseView, sourceID, targetID, false, true, true, nil)
+	pathResult, err := ComputeShortestPath(version, baseView, sourceID, targetID, false, true, true, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to compute shortest path: %w", err)
 	}
@@ -126,6 +133,98 @@ func buildShortestPathHull(
 	}, nil
 }
 
+// buildKSPHull creates a corridor by finding K shortest paths
+// and then expanding by `hops` around all nodes in all paths.
+func buildKSPHull(
+	version *GraphVersion,
+	baseView *View,
+	sourceID, targetID uint64,
+	sourceIdx, targetIdx uint32,
+	hops uint32,
+	k uint32,
+	cfg *ShortestPathConfig,
+) (*CorridorResult, error) {
+	// Step 1: Compute K shortest paths
+	kspConfig := DefaultKSPConfig(int(k))
+	kspConfig.ReturnVertices = true
+	kspConfig.ReturnEdges = true
+
+	// Build KSP shim config from the shortest path config's shim graph
+	kspShimCfg := &KSPShimConfig{ShimGraph: cfg.ShimGraph}
+
+	kspResult, err := ComputeKShortestPaths(
+		context.Background(),
+		version,
+		baseView,
+		sourceID,
+		targetID,
+		kspConfig,
+		kspShimCfg,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to compute K shortest paths: %w", err)
+	}
+
+	if kspResult.PathsFound == 0 {
+		// No paths found, fall back to endpoint neighborhood expansion
+		return buildEndpointNeighborhoodCorridor(version, baseView, sourceIdx, targetIdx, hops)
+	}
+
+	// Step 2: Collect union of all path vertices (as indices)
+	pathVertexSet := make(map[uint32]bool)
+	var primaryPath *ShortestPathResult
+
+	for i, path := range kspResult.Paths {
+		if path == nil || !path.Found {
+			continue
+		}
+
+		// Keep the first path as the primary path summary
+		if i == 0 {
+			primaryPath = path
+		}
+
+		// Add all vertices from this path to the set
+		for _, nodeID := range path.PathVertices {
+			idx, ok := version.GetNodeIndex(nodeID)
+			if ok {
+				pathVertexSet[idx] = true
+			}
+		}
+	}
+
+	// Step 3: Convert vertex set to slice for neighborhood expansion
+	pathVertexIndices := make([]uint32, 0, len(pathVertexSet))
+	for idx := range pathVertexSet {
+		pathVertexIndices = append(pathVertexIndices, idx)
+	}
+
+	// Step 4: Expand around all path vertices using BFS
+	corridorVertices := expandNeighborhood(version, baseView, pathVertexIndices, hops)
+
+	// Step 5: Create corridor view with these vertices
+	corridorView := createCorridorView(version, baseView, corridorVertices)
+
+	// Step 6: Compute explainability metadata
+	meta := computeCorridorMeta(version, corridorView, primaryPath)
+	meta["method"] = string(CorridorMethodKSPHull)
+	meta["hops"] = strconv.Itoa(int(hops))
+	meta["k"] = strconv.Itoa(int(k))
+	meta["paths_found"] = strconv.Itoa(kspResult.PathsFound)
+	meta["total_path_vertices"] = strconv.Itoa(len(pathVertexSet))
+
+	if primaryPath != nil {
+		meta["path_length"] = strconv.Itoa(len(primaryPath.PathVertices) - 1)
+	}
+
+	return &CorridorResult{
+		View:        corridorView,
+		Method:      CorridorMethodKSPHull,
+		PathSummary: primaryPath,
+		Meta:        meta,
+	}, nil
+}
+
 // buildCommunityAwareCorridor creates a corridor using community information.
 // If communities exist, includes all nodes from communities containing source/target.
 // Falls back to neighborhood expansion if communities are not available.
@@ -135,10 +234,15 @@ func buildCommunityAwareCorridor(
 	sourceID, targetID uint64,
 	sourceIdx, targetIdx uint32,
 	hops uint32,
+	cfg *ShortestPathConfig,
 ) (*CorridorResult, error) {
-	// For now, we don't have precomputed community data stored in GraphVersion.
+	// Check if community data is available
+	if version.HasCommunities() {
+		return buildCommunityAwareCorridorWithCommunities(version, baseView, sourceID, targetID, sourceIdx, targetIdx, hops, cfg)
+	}
+
 	// Fall back to a hybrid approach: shortest path + endpoint neighborhoods
-	pathResult, err := ComputeShortestPath(version, baseView, sourceID, targetID, false, true, true, nil)
+	pathResult, err := ComputeShortestPath(version, baseView, sourceID, targetID, false, true, true, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to compute shortest path: %w", err)
 	}
@@ -190,6 +294,91 @@ func buildCommunityAwareCorridor(
 	meta["hops"] = strconv.Itoa(int(hops))
 	meta["path_length"] = strconv.Itoa(len(pathResult.PathVertices) - 1)
 	meta["note"] = "community data not available, using endpoint expansion"
+
+	return &CorridorResult{
+		View:        corridorView,
+		Method:      CorridorMethodCommunityAware,
+		PathSummary: pathResult,
+		Meta:        meta,
+	}, nil
+}
+
+// buildCommunityAwareCorridorWithCommunities creates a corridor using precomputed
+// community membership data. Includes all vertices from communities containing
+// source and target, plus path vertices.
+func buildCommunityAwareCorridorWithCommunities(
+	version *GraphVersion,
+	baseView *View,
+	sourceID, targetID uint64,
+	sourceIdx, targetIdx uint32,
+	hops uint32,
+	cfg *ShortestPathConfig,
+) (*CorridorResult, error) {
+	// Get communities of source and target
+	srcComm, srcOk := version.GetVertexCommunity(sourceIdx)
+	dstComm, dstOk := version.GetVertexCommunity(targetIdx)
+
+	if !srcOk || !dstOk {
+		// Fallback to endpoint expansion if community lookup fails
+		return buildEndpointNeighborhoodCorridor(version, baseView, sourceIdx, targetIdx, hops)
+	}
+
+	// Collect all vertices in source and target communities
+	corridorVertices := make(map[uint32]bool)
+	for i, comm := range version.CommunityMembership {
+		if comm == srcComm || comm == dstComm {
+			corridorVertices[uint32(i)] = true
+		}
+	}
+
+	// Also compute shortest path to include any intermediate vertices
+	pathResult, err := ComputeShortestPath(version, baseView, sourceID, targetID, false, true, true, cfg)
+	if err != nil {
+		// Non-fatal: we can still build corridor from communities
+		pathResult = nil
+	}
+
+	// Include path vertices if path was found
+	if pathResult != nil && pathResult.Found {
+		for _, nodeID := range pathResult.PathVertices {
+			if idx, ok := version.GetNodeIndex(nodeID); ok {
+				corridorVertices[idx] = true
+			}
+		}
+	}
+
+	// Optionally expand around corridor vertices by hops (if specified)
+	if hops > 0 {
+		seeds := make([]uint32, 0, len(corridorVertices))
+		for v := range corridorVertices {
+			seeds = append(seeds, v)
+		}
+		expanded := expandNeighborhood(version, baseView, seeds, hops)
+		for v := range expanded {
+			corridorVertices[v] = true
+		}
+	}
+
+	// Create corridor view
+	corridorView := createCorridorView(version, baseView, corridorVertices)
+
+	// Compute metadata
+	meta := computeCorridorMeta(version, corridorView, pathResult)
+	meta["method"] = string(CorridorMethodCommunityAware)
+	meta["hops"] = strconv.Itoa(int(hops))
+	meta["source_community"] = strconv.Itoa(int(srcComm))
+	meta["target_community"] = strconv.Itoa(int(dstComm))
+	meta["communities_used"] = "true"
+
+	if srcComm == dstComm {
+		meta["same_community"] = "true"
+	} else {
+		meta["same_community"] = "false"
+	}
+
+	if pathResult != nil && pathResult.Found {
+		meta["path_length"] = strconv.Itoa(len(pathResult.PathVertices) - 1)
+	}
 
 	return &CorridorResult{
 		View:        corridorView,
@@ -491,9 +680,10 @@ func EstimateCorridorSize(
 	view *View,
 	sourceID, targetID uint64,
 	hops uint32,
+	cfg *ShortestPathConfig,
 ) (uint64, error) {
 	// Get path length as rough estimate
-	pathResult, err := ComputeShortestPath(version, view, sourceID, targetID, false, false, true, nil)
+	pathResult, err := ComputeShortestPath(version, view, sourceID, targetID, false, false, true, cfg)
 	if err != nil {
 		return 0, err
 	}

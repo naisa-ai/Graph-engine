@@ -37,6 +37,7 @@ type Server struct {
 	resultStore   *service.ResultStore
 	viewStore     *service.ViewStore
 	viewManager   *service.ViewManager
+	scheduler     *service.Scheduler
 
 	// Quota management
 	quotaManager *QuotaManager
@@ -69,6 +70,13 @@ func NewServer(cfg *config.Config, logger *slog.Logger, buildStore *service.Buil
 
 	// ViewManager: orchestrates view creation and caching
 	s.viewManager = service.NewViewManager(s.viewStore, s.versionStore, logger)
+
+	// Scheduler: manages job execution with concurrency limits
+	schedulerConfig := service.DefaultSchedulerConfig()
+	if cfg.Limits.MaxConcurrentPerTenant > 0 {
+		schedulerConfig.MaxParallelJobs = cfg.Limits.MaxConcurrentPerTenant
+	}
+	s.scheduler = service.NewScheduler(schedulerConfig, logger)
 
 	// QuotaManager: enforce per-tenant and global request limits
 	quotaConfig := DefaultQuotaConfig()
@@ -110,7 +118,7 @@ func NewServer(cfg *config.Config, logger *slog.Logger, buildStore *service.Buil
 	s.grpcServer = grpc.NewServer(opts...)
 
 	// Initialize handlers
-	s.graphEngine = NewGraphEngineHandler(logger, buildStore, s.graphRegistry, s.versionStore, s.resultStore, s.viewManager)
+	s.graphEngine = NewGraphEngineHandler(logger, buildStore, s.graphRegistry, s.versionStore, s.resultStore, s.viewManager, s.scheduler)
 	s.graphEngineOps = NewGraphEngineOpsHandler(logger, buildStore, s.graphRegistry, s.versionStore, s.resultStore, s.viewStore, cfg.Limits.MaxExportEdges)
 
 	// Register services
@@ -144,12 +152,30 @@ func (s *Server) ServeListener(lis net.Listener) error {
 // GracefulStop stops the server gracefully.
 func (s *Server) GracefulStop() {
 	s.logger.Info("stopping gRPC server gracefully")
+
+	// Shutdown scheduler first to allow running jobs to complete
+	if s.scheduler != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := s.scheduler.Shutdown(ctx); err != nil {
+			s.logger.Warn("scheduler shutdown error", "error", err)
+		}
+	}
+
 	s.grpcServer.GracefulStop()
 }
 
 // Stop stops the server immediately.
 func (s *Server) Stop() {
 	s.logger.Info("stopping gRPC server")
+
+	// Force stop scheduler with short timeout
+	if s.scheduler != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = s.scheduler.Shutdown(ctx)
+	}
+
 	s.grpcServer.Stop()
 }
 

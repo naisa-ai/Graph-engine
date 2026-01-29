@@ -374,7 +374,7 @@ class RunResponse(_message.Message):
     def __init__(self, job: _Optional[_Union[JobRef, _Mapping]] = ...) -> None: ...
 
 class AlgoSpec(_message.Message):
-    __slots__ = ("components", "communities", "shortest_path", "k_shortest_paths", "distances", "bfs", "neighborhood", "st_mincut", "corridor")
+    __slots__ = ("components", "communities", "shortest_path", "k_shortest_paths", "distances", "bfs", "neighborhood", "st_mincut", "corridor", "kcore", "betweenness")
     COMPONENTS_FIELD_NUMBER: _ClassVar[int]
     COMMUNITIES_FIELD_NUMBER: _ClassVar[int]
     SHORTEST_PATH_FIELD_NUMBER: _ClassVar[int]
@@ -384,6 +384,8 @@ class AlgoSpec(_message.Message):
     NEIGHBORHOOD_FIELD_NUMBER: _ClassVar[int]
     ST_MINCUT_FIELD_NUMBER: _ClassVar[int]
     CORRIDOR_FIELD_NUMBER: _ClassVar[int]
+    KCORE_FIELD_NUMBER: _ClassVar[int]
+    BETWEENNESS_FIELD_NUMBER: _ClassVar[int]
     components: ComponentsSpec
     communities: CommunitiesSpec
     shortest_path: ShortestPathSpec
@@ -393,7 +395,9 @@ class AlgoSpec(_message.Message):
     neighborhood: NeighborhoodQuerySpec
     st_mincut: STMinCutSpec
     corridor: CorridorSpec
-    def __init__(self, components: _Optional[_Union[ComponentsSpec, _Mapping]] = ..., communities: _Optional[_Union[CommunitiesSpec, _Mapping]] = ..., shortest_path: _Optional[_Union[ShortestPathSpec, _Mapping]] = ..., k_shortest_paths: _Optional[_Union[KShortestPathsSpec, _Mapping]] = ..., distances: _Optional[_Union[DistancesSpec, _Mapping]] = ..., bfs: _Optional[_Union[BFSSpec, _Mapping]] = ..., neighborhood: _Optional[_Union[NeighborhoodQuerySpec, _Mapping]] = ..., st_mincut: _Optional[_Union[STMinCutSpec, _Mapping]] = ..., corridor: _Optional[_Union[CorridorSpec, _Mapping]] = ...) -> None: ...
+    kcore: KCoreSpec
+    betweenness: BetweennessSpec
+    def __init__(self, components: _Optional[_Union[ComponentsSpec, _Mapping]] = ..., communities: _Optional[_Union[CommunitiesSpec, _Mapping]] = ..., shortest_path: _Optional[_Union[ShortestPathSpec, _Mapping]] = ..., k_shortest_paths: _Optional[_Union[KShortestPathsSpec, _Mapping]] = ..., distances: _Optional[_Union[DistancesSpec, _Mapping]] = ..., bfs: _Optional[_Union[BFSSpec, _Mapping]] = ..., neighborhood: _Optional[_Union[NeighborhoodQuerySpec, _Mapping]] = ..., st_mincut: _Optional[_Union[STMinCutSpec, _Mapping]] = ..., corridor: _Optional[_Union[CorridorSpec, _Mapping]] = ..., kcore: _Optional[_Union[KCoreSpec, _Mapping]] = ..., betweenness: _Optional[_Union[BetweennessSpec, _Mapping]] = ...) -> None: ...
 
 class ComponentsSpec(_message.Message):
     __slots__ = ("mode",)
@@ -515,6 +519,22 @@ class CorridorSpec(_message.Message):
     k: int
     def __init__(self, source_u64: _Optional[int] = ..., target_u64: _Optional[int] = ..., method: _Optional[_Union[CorridorSpec.Method, str]] = ..., hops: _Optional[int] = ..., k: _Optional[int] = ...) -> None: ...
 
+class KCoreSpec(_message.Message):
+    __slots__ = ("k",)
+    K_FIELD_NUMBER: _ClassVar[int]
+    k: int
+    def __init__(self, k: _Optional[int] = ...) -> None: ...
+
+class BetweennessSpec(_message.Message):
+    __slots__ = ("sample_size", "normalized", "weight_column")
+    SAMPLE_SIZE_FIELD_NUMBER: _ClassVar[int]
+    NORMALIZED_FIELD_NUMBER: _ClassVar[int]
+    WEIGHT_COLUMN_FIELD_NUMBER: _ClassVar[int]
+    sample_size: int
+    normalized: bool
+    weight_column: str
+    def __init__(self, sample_size: _Optional[int] = ..., normalized: bool = ..., weight_column: _Optional[str] = ...) -> None: ...
+
 class GetJobRequest(_message.Message):
     __slots__ = ("job",)
     JOB_FIELD_NUMBER: _ClassVar[int]
@@ -566,7 +586,7 @@ class GetResultRequest(_message.Message):
     def __init__(self, result: _Optional[_Union[ResultRef, _Mapping]] = ...) -> None: ...
 
 class ResultChunk(_message.Message):
-    __slots__ = ("header", "u32", "u64", "f64", "bytes", "shortest_path", "st_mincut", "corridor", "done")
+    __slots__ = ("header", "u32", "u64", "f64", "bytes", "shortest_path", "st_mincut", "corridor", "kcore", "betweenness", "done")
     HEADER_FIELD_NUMBER: _ClassVar[int]
     U32_FIELD_NUMBER: _ClassVar[int]
     U64_FIELD_NUMBER: _ClassVar[int]
@@ -575,6 +595,8 @@ class ResultChunk(_message.Message):
     SHORTEST_PATH_FIELD_NUMBER: _ClassVar[int]
     ST_MINCUT_FIELD_NUMBER: _ClassVar[int]
     CORRIDOR_FIELD_NUMBER: _ClassVar[int]
+    KCORE_FIELD_NUMBER: _ClassVar[int]
+    BETWEENNESS_FIELD_NUMBER: _ClassVar[int]
     DONE_FIELD_NUMBER: _ClassVar[int]
     header: ResultHeader
     u32: U32Buffer
@@ -584,8 +606,10 @@ class ResultChunk(_message.Message):
     shortest_path: ShortestPathResult
     st_mincut: STMinCutResult
     corridor: CorridorResult
+    kcore: KCoreResult
+    betweenness: BetweennessResult
     done: bool
-    def __init__(self, header: _Optional[_Union[ResultHeader, _Mapping]] = ..., u32: _Optional[_Union[U32Buffer, _Mapping]] = ..., u64: _Optional[_Union[U64Buffer, _Mapping]] = ..., f64: _Optional[_Union[F64Buffer, _Mapping]] = ..., bytes: _Optional[_Union[BytesBuffer, _Mapping]] = ..., shortest_path: _Optional[_Union[ShortestPathResult, _Mapping]] = ..., st_mincut: _Optional[_Union[STMinCutResult, _Mapping]] = ..., corridor: _Optional[_Union[CorridorResult, _Mapping]] = ..., done: bool = ...) -> None: ...
+    def __init__(self, header: _Optional[_Union[ResultHeader, _Mapping]] = ..., u32: _Optional[_Union[U32Buffer, _Mapping]] = ..., u64: _Optional[_Union[U64Buffer, _Mapping]] = ..., f64: _Optional[_Union[F64Buffer, _Mapping]] = ..., bytes: _Optional[_Union[BytesBuffer, _Mapping]] = ..., shortest_path: _Optional[_Union[ShortestPathResult, _Mapping]] = ..., st_mincut: _Optional[_Union[STMinCutResult, _Mapping]] = ..., corridor: _Optional[_Union[CorridorResult, _Mapping]] = ..., kcore: _Optional[_Union[KCoreResult, _Mapping]] = ..., betweenness: _Optional[_Union[BetweennessResult, _Mapping]] = ..., done: bool = ...) -> None: ...
 
 class ResultHeader(_message.Message):
     __slots__ = ("result_id", "type", "vcount", "ecount", "meta")
@@ -674,6 +698,20 @@ class CorridorResult(_message.Message):
     view: ViewRef
     meta: _containers.ScalarMap[str, str]
     def __init__(self, view: _Optional[_Union[ViewRef, _Mapping]] = ..., meta: _Optional[_Mapping[str, str]] = ...) -> None: ...
+
+class KCoreResult(_message.Message):
+    __slots__ = ("coreness", "max_core")
+    CORENESS_FIELD_NUMBER: _ClassVar[int]
+    MAX_CORE_FIELD_NUMBER: _ClassVar[int]
+    coreness: _containers.RepeatedScalarFieldContainer[int]
+    max_core: int
+    def __init__(self, coreness: _Optional[_Iterable[int]] = ..., max_core: _Optional[int] = ...) -> None: ...
+
+class BetweennessResult(_message.Message):
+    __slots__ = ("scores",)
+    SCORES_FIELD_NUMBER: _ClassVar[int]
+    scores: _containers.RepeatedScalarFieldContainer[float]
+    def __init__(self, scores: _Optional[_Iterable[float]] = ...) -> None: ...
 
 class ReleaseRequest(_message.Message):
     __slots__ = ("view", "result")

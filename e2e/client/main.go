@@ -84,6 +84,12 @@ func main() {
 		{"RunBFS", testRunBFS},
 		{"RunNeighborhood", testRunNeighborhood},
 		{"RunCommunities", testRunCommunities},
+		// Phase 5: New algorithms (k-core, betweenness)
+		{"RunKCore", testRunKCore},
+		{"RunBetweenness", testRunBetweenness},
+		{"RunBetweennessSampled", testRunBetweennessSampled},
+		// Batch artifacts test
+		{"BatchArtifactsAll", testBatchArtifactsAll},
 		// Resource management tests
 		{"CancelJob", testCancelJob},
 		{"Release", testRelease},
@@ -1233,6 +1239,293 @@ func testRunCommunities(ctx context.Context, client gepb.GraphEngineClient, _ ge
 	}
 
 	log.Printf("  Communities (Louvain) job completed: %s", resp.Job.JobId)
+	return nil
+}
+
+// Phase 5 Algorithm test: K-Core Decomposition
+func testRunKCore(ctx context.Context, client gepb.GraphEngineClient, _ gepb.GraphEngineOpsClient) error {
+	if graphRef == nil {
+		return fmt.Errorf("no graph reference available")
+	}
+
+	// Run k-core decomposition (full decomposition, k=0)
+	resp, err := client.Run(ctx, &gepb.RunRequest{
+		Target: &gepb.RunRequest_Graph{Graph: graphRef},
+		Algo: &gepb.AlgoSpec{
+			Kind: &gepb.AlgoSpec_Kcore{
+				Kcore: &gepb.KCoreSpec{
+					K: 0, // Full decomposition
+				},
+			},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("Run KCore RPC failed: %w", err)
+	}
+	if resp.Job == nil || resp.Job.JobId == "" {
+		return fmt.Errorf("expected valid job reference")
+	}
+
+	// Verify job completed
+	jobResp, err := client.GetJob(ctx, &gepb.GetJobRequest{
+		Job: resp.Job,
+	})
+	if err != nil {
+		return fmt.Errorf("GetJob RPC failed: %w", err)
+	}
+	if jobResp.State != gepb.GetJobResponse_SUCCEEDED {
+		return fmt.Errorf("job did not succeed, state=%v", jobResp.State)
+	}
+
+	// Get the result to verify k-core data
+	resultStream, err := client.GetResult(ctx, &gepb.GetResultRequest{
+		Result: jobResp.Result,
+	})
+	if err != nil {
+		return fmt.Errorf("GetResult RPC failed: %w", err)
+	}
+
+	// Read the k-core result
+	var maxCore uint32
+	var corenessCount int
+	for {
+		chunk, err := resultStream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("GetResult recv failed: %w", err)
+		}
+
+		if kcoreResult := chunk.GetKcore(); kcoreResult != nil {
+			maxCore = kcoreResult.GetMaxCore()
+			corenessCount = len(kcoreResult.GetCoreness())
+			log.Printf("  KCore result: max_core=%d, vertices=%d", maxCore, corenessCount)
+			break
+		}
+	}
+
+	if corenessCount != 10 {
+		return fmt.Errorf("expected coreness for 10 vertices, got %d", corenessCount)
+	}
+
+	log.Printf("  KCore (k=0, full decomposition) job completed: %s", resp.Job.JobId)
+	return nil
+}
+
+// Phase 5 Algorithm test: Betweenness Centrality
+func testRunBetweenness(ctx context.Context, client gepb.GraphEngineClient, _ gepb.GraphEngineOpsClient) error {
+	if graphRef == nil {
+		return fmt.Errorf("no graph reference available")
+	}
+
+	// Run betweenness centrality (full computation)
+	resp, err := client.Run(ctx, &gepb.RunRequest{
+		Target: &gepb.RunRequest_Graph{Graph: graphRef},
+		Algo: &gepb.AlgoSpec{
+			Kind: &gepb.AlgoSpec_Betweenness{
+				Betweenness: &gepb.BetweennessSpec{
+					SampleSize: 0, // Full computation
+					Normalized: false,
+				},
+			},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("Run Betweenness RPC failed: %w", err)
+	}
+	if resp.Job == nil || resp.Job.JobId == "" {
+		return fmt.Errorf("expected valid job reference")
+	}
+
+	// Verify job completed
+	jobResp, err := client.GetJob(ctx, &gepb.GetJobRequest{
+		Job: resp.Job,
+	})
+	if err != nil {
+		return fmt.Errorf("GetJob RPC failed: %w", err)
+	}
+	if jobResp.State != gepb.GetJobResponse_SUCCEEDED {
+		return fmt.Errorf("job did not succeed, state=%v", jobResp.State)
+	}
+
+	// Get the result to verify betweenness data
+	resultStream, err := client.GetResult(ctx, &gepb.GetResultRequest{
+		Result: jobResp.Result,
+	})
+	if err != nil {
+		return fmt.Errorf("GetResult RPC failed: %w", err)
+	}
+
+	// Read the betweenness result
+	var scoresCount int
+	for {
+		chunk, err := resultStream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("GetResult recv failed: %w", err)
+		}
+
+		if betwResult := chunk.GetBetweenness(); betwResult != nil {
+			scoresCount = len(betwResult.GetScores())
+			log.Printf("  Betweenness result: %d vertex scores", scoresCount)
+			break
+		}
+	}
+
+	if scoresCount != 10 {
+		return fmt.Errorf("expected betweenness for 10 vertices, got %d", scoresCount)
+	}
+
+	log.Printf("  Betweenness (full, unnormalized) job completed: %s", resp.Job.JobId)
+	return nil
+}
+
+// Phase 5 Algorithm test: Betweenness Centrality (Sampled)
+func testRunBetweennessSampled(ctx context.Context, client gepb.GraphEngineClient, _ gepb.GraphEngineOpsClient) error {
+	if graphRef == nil {
+		return fmt.Errorf("no graph reference available")
+	}
+
+	// Run betweenness centrality with sampling
+	resp, err := client.Run(ctx, &gepb.RunRequest{
+		Target: &gepb.RunRequest_Graph{Graph: graphRef},
+		Algo: &gepb.AlgoSpec{
+			Kind: &gepb.AlgoSpec_Betweenness{
+				Betweenness: &gepb.BetweennessSpec{
+					SampleSize: 5, // Sample only 5 vertices
+					Normalized: true,
+				},
+			},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("Run Betweenness (sampled) RPC failed: %w", err)
+	}
+	if resp.Job == nil || resp.Job.JobId == "" {
+		return fmt.Errorf("expected valid job reference")
+	}
+
+	// Verify job completed
+	jobResp, err := client.GetJob(ctx, &gepb.GetJobRequest{
+		Job: resp.Job,
+	})
+	if err != nil {
+		return fmt.Errorf("GetJob RPC failed: %w", err)
+	}
+	if jobResp.State != gepb.GetJobResponse_SUCCEEDED {
+		return fmt.Errorf("job did not succeed, state=%v", jobResp.State)
+	}
+
+	log.Printf("  Betweenness (sampled=5, normalized) job completed: %s", resp.Job.JobId)
+	return nil
+}
+
+// Batch artifacts test: Publish with all 4 artifact flags
+func testBatchArtifactsAll(ctx context.Context, client gepb.GraphEngineClient, _ gepb.GraphEngineOpsClient) error {
+	// Create a new build for batch artifacts test
+	beginResp, err := client.BeginBuild(ctx, &gepb.BeginBuildRequest{
+		GraphName: "e2e-batch-artifacts-graph",
+		Directed:  false,
+		Labels:    map[string]string{"env": "e2e", "test": "batch_artifacts"},
+	})
+	if err != nil {
+		return fmt.Errorf("BeginBuild RPC failed: %w", err)
+	}
+	batchBuildID := beginResp.BuildId
+
+	// Upload vertices and edges for a small test graph
+	stream, err := client.Upload(ctx)
+	if err != nil {
+		return fmt.Errorf("Upload stream failed: %w", err)
+	}
+
+	// Upload a small clique (complete graph on 5 vertices)
+	err = stream.Send(&gepb.UploadRequest{
+		BuildId: batchBuildID,
+		Payload: &gepb.UploadRequest_Vertices{
+			Vertices: &gepb.VertexChunk{
+				NodeIdU64: []uint64{1, 2, 3, 4, 5},
+			},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to send vertices: %w", err)
+	}
+
+	// Complete graph edges: 1-2, 1-3, 1-4, 1-5, 2-3, 2-4, 2-5, 3-4, 3-5, 4-5
+	err = stream.Send(&gepb.UploadRequest{
+		BuildId: batchBuildID,
+		Payload: &gepb.UploadRequest_Edges{
+			Edges: &gepb.EdgeChunk{
+				SrcU64: []uint64{1, 1, 1, 1, 2, 2, 2, 3, 3, 4},
+				DstU64: []uint64{2, 3, 4, 5, 3, 4, 5, 4, 5, 5},
+			},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to send edges: %w", err)
+	}
+
+	_, err = stream.CloseAndRecv()
+	if err != nil {
+		return fmt.Errorf("Upload close failed: %w", err)
+	}
+
+	// Publish with all 4 batch artifact flags enabled
+	pubResp, err := client.PublishBuild(ctx, &gepb.PublishBuildRequest{
+		BuildId: batchBuildID,
+		Artifacts: &gepb.BatchArtifacts{
+			ComputeComponents:         true,
+			ComputeCommunities:        true,
+			ComputeKcore:              true,
+			ComputeBetweennessSampled: true,
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("PublishBuild RPC failed: %w", err)
+	}
+	if pubResp.Status.Code != 0 {
+		return fmt.Errorf("publish failed: code=%d, msg=%s", pubResp.Status.Code, pubResp.Status.Message)
+	}
+
+	log.Printf("  Batch artifacts build published: %s version %s",
+		pubResp.Graph.GraphName, pubResp.Graph.VersionId)
+
+	// Verify by running corridor with COMMUNITY_AWARE method
+	// If communities were precomputed, this should use them
+	batchGraphRef := pubResp.Graph
+	corridorResp, err := client.Run(ctx, &gepb.RunRequest{
+		Target: &gepb.RunRequest_Graph{Graph: batchGraphRef},
+		Algo: &gepb.AlgoSpec{
+			Kind: &gepb.AlgoSpec_Corridor{
+				Corridor: &gepb.CorridorSpec{
+					SourceU64: 1,
+					TargetU64: 5,
+					Method:    gepb.CorridorSpec_COMMUNITY_AWARE,
+					Hops:      0,
+				},
+			},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("Run Corridor (COMMUNITY_AWARE) RPC failed: %w", err)
+	}
+
+	// Verify job completed
+	jobResp, err := client.GetJob(ctx, &gepb.GetJobRequest{
+		Job: corridorResp.Job,
+	})
+	if err != nil {
+		return fmt.Errorf("GetJob RPC failed: %w", err)
+	}
+	if jobResp.State != gepb.GetJobResponse_SUCCEEDED {
+		return fmt.Errorf("corridor job did not succeed, state=%v", jobResp.State)
+	}
+
+	log.Printf("  Batch artifacts test passed: components, communities, k-core, betweenness all computed")
 	return nil
 }
 

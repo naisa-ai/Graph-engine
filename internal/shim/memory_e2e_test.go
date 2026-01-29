@@ -36,63 +36,46 @@ import (
 func TestE2E_GraphLifecycle_Basic(t *testing.T) {
 	tracker := NewMemoryTracker(0) // unlimited
 
-	// Attempt to create a tracked graph
+	// Create a tracked graph
 	tg, err := NewTrackedGraph(tracker, 5, []uint32{0, 1, 2, 3}, []uint32{1, 2, 3, 4}, false)
+	if err != nil {
+		t.Fatalf("expected graph creation to succeed, got: %v", err)
+	}
 
-	if IsAvailable() {
-		// With igraph: should succeed
-		if err != nil {
-			t.Fatalf("expected graph creation to succeed with igraph, got: %v", err)
-		}
+	// Verify memory is tracked
+	initialMemory := tracker.Current()
+	if initialMemory == 0 {
+		t.Error("expected non-zero memory tracking after graph creation")
+	}
 
-		// Verify memory is tracked
-		initialMemory := tracker.Current()
-		if initialMemory == 0 {
-			t.Error("expected non-zero memory tracking after graph creation")
-		}
+	stats := tracker.Stats()
+	if stats.ActiveAllocations != 1 {
+		t.Errorf("expected 1 active allocation, got %d", stats.ActiveAllocations)
+	}
 
-		stats := tracker.Stats()
-		if stats.ActiveAllocations != 1 {
-			t.Errorf("expected 1 active allocation, got %d", stats.ActiveAllocations)
-		}
+	graphCount, graphBytes := tracker.CountByType("graph")
+	if graphCount != 1 {
+		t.Errorf("expected 1 graph, got %d", graphCount)
+	}
+	if graphBytes == 0 {
+		t.Error("expected non-zero bytes for graph")
+	}
 
-		graphCount, graphBytes := tracker.CountByType("graph")
-		if graphCount != 1 {
-			t.Errorf("expected 1 graph, got %d", graphCount)
-		}
-		if graphBytes == 0 {
-			t.Error("expected non-zero bytes for graph")
-		}
+	// Close the graph
+	tg.Close()
 
-		// Close the graph
-		tg.Close()
+	// Verify memory is released
+	if tracker.Current() != 0 {
+		t.Errorf("expected 0 memory after close, got %d", tracker.Current())
+	}
 
-		// Verify memory is released
-		if tracker.Current() != 0 {
-			t.Errorf("expected 0 memory after close, got %d", tracker.Current())
-		}
-
-		stats = tracker.Stats()
-		if stats.ActiveAllocations != 0 {
-			t.Errorf("expected 0 active allocations after close, got %d", stats.ActiveAllocations)
-		}
-	} else {
-		// Without igraph: should return ErrShimNotAvailable
-		if err != ErrShimNotAvailable {
-			t.Errorf("expected ErrShimNotAvailable without igraph, got: %v", err)
-		}
-
-		// Memory should not be tracked (allocation was rolled back)
-		if tracker.Current() != 0 {
-			t.Errorf("expected 0 memory when shim not available, got %d", tracker.Current())
-		}
+	stats = tracker.Stats()
+	if stats.ActiveAllocations != 0 {
+		t.Errorf("expected 0 active allocations after close, got %d", stats.ActiveAllocations)
 	}
 }
 
 func TestE2E_GraphLifecycle_MultipleGraphs(t *testing.T) {
-	if !IsAvailable() {
-		t.Skip("igraph not available")
-	}
 
 	tracker := NewMemoryTracker(0)
 
@@ -150,9 +133,6 @@ func TestE2E_GraphLifecycle_MultipleGraphs(t *testing.T) {
 }
 
 func TestE2E_GraphLifecycle_DoubleClose(t *testing.T) {
-	if !IsAvailable() {
-		t.Skip("igraph not available")
-	}
 
 	tracker := NewMemoryTracker(0)
 
@@ -177,9 +157,6 @@ func TestE2E_GraphLifecycle_DoubleClose(t *testing.T) {
 // -----------------------------------------------------------------------------
 
 func TestE2E_ViewLifecycle_Basic(t *testing.T) {
-	if !IsAvailable() {
-		t.Skip("igraph not available")
-	}
 
 	tracker := NewMemoryTracker(0)
 
@@ -228,9 +205,6 @@ func TestE2E_ViewLifecycle_Basic(t *testing.T) {
 }
 
 func TestE2E_ViewLifecycle_MultipleViews(t *testing.T) {
-	if !IsAvailable() {
-		t.Skip("igraph not available")
-	}
 
 	tracker := NewMemoryTracker(0)
 
@@ -274,9 +248,6 @@ func TestE2E_ViewLifecycle_MultipleViews(t *testing.T) {
 // -----------------------------------------------------------------------------
 
 func TestE2E_ResultLifecycle_Components(t *testing.T) {
-	if !IsAvailable() {
-		t.Skip("igraph not available")
-	}
 
 	tracker := NewMemoryTracker(0)
 
@@ -314,9 +285,6 @@ func TestE2E_ResultLifecycle_Components(t *testing.T) {
 }
 
 func TestE2E_ResultLifecycle_ShortestPath(t *testing.T) {
-	if !IsAvailable() {
-		t.Skip("igraph not available")
-	}
 
 	tracker := NewMemoryTracker(0)
 
@@ -351,9 +319,6 @@ func TestE2E_ResultLifecycle_ShortestPath(t *testing.T) {
 // -----------------------------------------------------------------------------
 
 func TestE2E_MemoryLimits_EnforcementOnGraph(t *testing.T) {
-	if !IsAvailable() {
-		t.Skip("igraph not available")
-	}
 
 	// Set a small limit
 	tracker := NewMemoryTracker(1000) // 1KB limit
@@ -385,9 +350,6 @@ func TestE2E_MemoryLimits_EnforcementOnGraph(t *testing.T) {
 }
 
 func TestE2E_MemoryLimits_EnforcementOnView(t *testing.T) {
-	if !IsAvailable() {
-		t.Skip("igraph not available")
-	}
 
 	// Create graph first, then set tight limit
 	tracker := NewMemoryTracker(0) // Start unlimited
@@ -447,9 +409,6 @@ func TestE2E_MemoryLimits_DynamicAdjustment(t *testing.T) {
 // -----------------------------------------------------------------------------
 
 func TestE2E_Concurrent_GraphCreation(t *testing.T) {
-	if !IsAvailable() {
-		t.Skip("igraph not available")
-	}
 
 	tracker := NewMemoryTracker(0)
 
@@ -499,9 +458,6 @@ func TestE2E_Concurrent_GraphCreation(t *testing.T) {
 }
 
 func TestE2E_Concurrent_MixedOperations(t *testing.T) {
-	if !IsAvailable() {
-		t.Skip("igraph not available")
-	}
 
 	tracker := NewMemoryTracker(0)
 
@@ -590,9 +546,6 @@ func TestE2E_Concurrent_MixedOperations(t *testing.T) {
 }
 
 func TestE2E_Concurrent_WithMemoryLimit(t *testing.T) {
-	if !IsAvailable() {
-		t.Skip("igraph not available")
-	}
 
 	// Small limit to force contention
 	tracker := NewMemoryTracker(50000)
@@ -639,9 +592,6 @@ func TestE2E_Concurrent_WithMemoryLimit(t *testing.T) {
 // -----------------------------------------------------------------------------
 
 func TestE2E_LeakDetection_NoLeaks(t *testing.T) {
-	if !IsAvailable() {
-		t.Skip("igraph not available")
-	}
 
 	tracker := NewMemoryTracker(0)
 
@@ -661,9 +611,6 @@ func TestE2E_LeakDetection_NoLeaks(t *testing.T) {
 }
 
 func TestE2E_LeakDetection_DetectsLeaks(t *testing.T) {
-	if !IsAvailable() {
-		t.Skip("igraph not available")
-	}
 
 	tracker := NewMemoryTracker(0)
 
@@ -695,9 +642,6 @@ func TestE2E_LeakDetection_DetectsLeaks(t *testing.T) {
 // -----------------------------------------------------------------------------
 
 func TestE2E_Stress_RapidCreateClose(t *testing.T) {
-	if !IsAvailable() {
-		t.Skip("igraph not available")
-	}
 
 	if testing.Short() {
 		t.Skip("skipping stress test in short mode")
@@ -721,18 +665,19 @@ func TestE2E_Stress_RapidCreateClose(t *testing.T) {
 	}
 
 	stats := tracker.Stats()
-	if stats.TotalAllocations != iterations {
-		t.Errorf("expected %d total allocations, got %d", iterations, stats.TotalAllocations)
+	// Note: allocations may exceed iterations because NewTrackedGraph does
+	// estimate-then-reallocate when actual size differs from estimated size.
+	// The key invariant is that allocations == deallocations (no leaks).
+	if stats.TotalAllocations < uint64(iterations) {
+		t.Errorf("expected at least %d total allocations, got %d", iterations, stats.TotalAllocations)
 	}
-	if stats.TotalDeallocations != iterations {
-		t.Errorf("expected %d total deallocations, got %d", iterations, stats.TotalDeallocations)
+	if stats.TotalAllocations != stats.TotalDeallocations {
+		t.Errorf("allocation/deallocation mismatch: allocations=%d, deallocations=%d",
+			stats.TotalAllocations, stats.TotalDeallocations)
 	}
 }
 
 func TestE2E_Stress_PeakMemoryTracking(t *testing.T) {
-	if !IsAvailable() {
-		t.Skip("igraph not available")
-	}
 
 	if testing.Short() {
 		t.Skip("skipping stress test in short mode")
@@ -777,9 +722,6 @@ func TestE2E_Stress_PeakMemoryTracking(t *testing.T) {
 // -----------------------------------------------------------------------------
 
 func TestE2E_Callbacks_AllocDealloc(t *testing.T) {
-	if !IsAvailable() {
-		t.Skip("igraph not available")
-	}
 
 	tracker := NewMemoryTracker(0)
 
@@ -836,9 +778,6 @@ func TestE2E_Callbacks_AllocDealloc(t *testing.T) {
 // -----------------------------------------------------------------------------
 
 func TestE2E_EdgeCase_EmptyGraph(t *testing.T) {
-	if !IsAvailable() {
-		t.Skip("igraph not available")
-	}
 
 	tracker := NewMemoryTracker(0)
 
@@ -861,9 +800,6 @@ func TestE2E_EdgeCase_EmptyGraph(t *testing.T) {
 }
 
 func TestE2E_EdgeCase_SingleVertex(t *testing.T) {
-	if !IsAvailable() {
-		t.Skip("igraph not available")
-	}
 
 	tracker := NewMemoryTracker(0)
 
@@ -881,9 +817,6 @@ func TestE2E_EdgeCase_SingleVertex(t *testing.T) {
 }
 
 func TestE2E_EdgeCase_SelfLoop(t *testing.T) {
-	if !IsAvailable() {
-		t.Skip("igraph not available")
-	}
 
 	tracker := NewMemoryTracker(0)
 
@@ -905,10 +838,6 @@ func TestE2E_EdgeCase_SelfLoop(t *testing.T) {
 // -----------------------------------------------------------------------------
 
 func BenchmarkE2E_GraphCreateClose(b *testing.B) {
-	if !IsAvailable() {
-		b.Skip("igraph not available")
-	}
-
 	tracker := NewMemoryTracker(0)
 
 	b.ResetTimer()

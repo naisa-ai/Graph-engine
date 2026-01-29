@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2025 Naisa AI, Inc.
+
 """Type definitions for the Graph-engine client."""
 
 from dataclasses import dataclass, field
@@ -88,6 +91,19 @@ class CorridorResult:
     """Result of corridor view creation."""
     view_id: str = ""
     meta: Dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
+class KCoreResult:
+    """Result of k-core decomposition."""
+    coreness: List[int] = field(default_factory=list)
+    max_core: int = 0
+
+
+@dataclass
+class BetweennessResult:
+    """Result of betweenness centrality computation."""
+    scores: List[float] = field(default_factory=list)
 
 
 # =============================================================================

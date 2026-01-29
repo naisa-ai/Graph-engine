@@ -6,6 +6,95 @@ import (
 	"math"
 )
 
+// weightedEdge represents an edge with weight for adjacency list.
+// Used by distances computation algorithms.
+type weightedEdge struct {
+	dst       uint32
+	weight    float32
+	edgeIndex int
+}
+
+// buildWeightedAdjacencyList builds an adjacency list from the graph.
+// Used by distances computation algorithms.
+func buildWeightedAdjacencyList(version *GraphVersion, view *View) map[uint32][]weightedEdge {
+	adj := make(map[uint32][]weightedEdge)
+
+	hasWeights := len(version.EdgeWeight) == len(version.EdgeSrc)
+
+	for i := range version.EdgeSrc {
+		// Skip if edge is not in view
+		if view != nil && !view.ContainsEdge(i) {
+			continue
+		}
+
+		src := version.EdgeSrc[i]
+		dst := version.EdgeDst[i]
+
+		var weight float32 = 1.0
+		if hasWeights {
+			weight = version.EdgeWeight[i]
+		}
+
+		edge := weightedEdge{
+			dst:       dst,
+			weight:    weight,
+			edgeIndex: i,
+		}
+		adj[src] = append(adj[src], edge)
+
+		// For undirected graphs, add reverse edge
+		if !version.Directed {
+			reverseEdge := weightedEdge{
+				dst:       src,
+				weight:    weight,
+				edgeIndex: i,
+			}
+			adj[dst] = append(adj[dst], reverseEdge)
+		}
+	}
+
+	return adj
+}
+
+// dijkstraNode represents a node in Dijkstra's priority queue.
+type dijkstraNode struct {
+	node     uint32
+	distance float64
+	index    int // index in heap
+}
+
+// dijkstraPQ is a priority queue for Dijkstra's algorithm.
+type dijkstraPQ []*dijkstraNode
+
+func (pq dijkstraPQ) Len() int { return len(pq) }
+
+func (pq dijkstraPQ) Less(i, j int) bool {
+	return pq[i].distance < pq[j].distance
+}
+
+func (pq dijkstraPQ) Swap(i, j int) {
+	pq[i], pq[j] = pq[j], pq[i]
+	pq[i].index = i
+	pq[j].index = j
+}
+
+func (pq *dijkstraPQ) Push(x interface{}) {
+	n := len(*pq)
+	node := x.(*dijkstraNode)
+	node.index = n
+	*pq = append(*pq, node)
+}
+
+func (pq *dijkstraPQ) Pop() interface{} {
+	old := *pq
+	n := len(old)
+	node := old[n-1]
+	old[n-1] = nil
+	node.index = -1
+	*pq = old[0 : n-1]
+	return node
+}
+
 // DistancesResult contains the result of a distances computation.
 type DistancesResult struct {
 	// Distances is a flattened matrix of distances (row-major order)

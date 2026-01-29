@@ -335,6 +335,56 @@ ge_status_t ge_run_communities_louvain_view(
 );
 
 // -----------------------------------------------------------------------------
+// Algorithm: K-Core Decomposition
+// -----------------------------------------------------------------------------
+
+// Compute k-core decomposition.
+// Returns coreness value for each vertex (the largest k for which
+// the vertex belongs to a k-core).
+// Result contains:
+//   - "coreness": uint32[] (coreness value per vertex)
+//   - "max_core": uint32[1] (maximum k found)
+ge_status_t ge_run_kcore(
+    const ge_graph_t* g,
+    ge_result_t** out
+);
+
+// K-core on a view.
+ge_status_t ge_run_kcore_view(
+    const ge_graph_t* g,
+    const ge_view_t* v,
+    ge_result_t** out
+);
+
+// -----------------------------------------------------------------------------
+// Algorithm: Betweenness Centrality
+// -----------------------------------------------------------------------------
+
+// Compute betweenness centrality for all vertices.
+// sample_size: number of source vertices to sample (0 = all)
+// normalized: whether to normalize scores
+// weights_or_null: edge weights (NULL for unweighted)
+// Result contains:
+//   - "scores": f64[] (betweenness score per vertex)
+ge_status_t ge_run_betweenness(
+    const ge_graph_t* g,
+    uint32_t sample_size,
+    int normalized,
+    const double* weights_or_null,
+    ge_result_t** out
+);
+
+// Betweenness on a view.
+ge_status_t ge_run_betweenness_view(
+    const ge_graph_t* g,
+    const ge_view_t* v,
+    uint32_t sample_size,
+    int normalized,
+    const double* weights_or_null,
+    ge_result_t** out
+);
+
+// -----------------------------------------------------------------------------
 // Result extraction
 // -----------------------------------------------------------------------------
 
@@ -383,6 +433,14 @@ const char* ge_shim_version(void);
 
 // Get the igraph library version string.
 const char* ge_igraph_version(void);
+
+// -----------------------------------------------------------------------------
+// Thread safety
+// -----------------------------------------------------------------------------
+
+// Check if igraph was built with thread-safety (TLS) enabled.
+// Returns 1 if thread-safe, 0 otherwise.
+int ge_is_thread_safe(void);
 
 #ifdef __cplusplus
 }

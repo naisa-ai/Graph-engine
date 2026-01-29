@@ -1,17 +1,15 @@
 # E2E test client using Python client library
-FROM python:3.11-slim
+ARG BASE_IMAGE=graph-engine-e2e-py-base:latest
+FROM ${BASE_IMAGE}
 
 WORKDIR /app
-
-# Install dependencies
-RUN pip install --no-cache-dir grpcio>=1.60.0 protobuf>=4.0.0
 
 # Copy the client library
 COPY clients/py /app/clients/py
 
 # Generate proto files for the client
 WORKDIR /app/clients/py
-RUN pip install grpcio-tools && make proto || true
+RUN make proto || true
 
 # Copy the e2e test
 WORKDIR /app

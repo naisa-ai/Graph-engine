@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2025 Naisa AI, Inc.
+
 """Graph-engine Python client library."""
 
 from graphengine.client import GraphEngineClient, AsyncGraphEngineClient
@@ -8,6 +11,8 @@ from graphengine.types import (
     DistanceMatrix,
     MinCutResult,
     CorridorResult,
+    KCoreResult,
+    BetweennessResult,
     HealthStatus,
     GraphSummary,
     GraphDetails,
@@ -51,6 +56,8 @@ __all__ = [
     "DistanceMatrix",
     "MinCutResult",
     "CorridorResult",
+    "KCoreResult",
+    "BetweennessResult",
     "HealthStatus",
     "GraphSummary",
     "GraphDetails",

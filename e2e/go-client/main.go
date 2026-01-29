@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2025 Naisa AI, Inc.
+
 // Package main implements E2E tests for the Graph-engine service using the Go client library.
 // This tests the same APIs as e2e/client but uses the high-level client library.
 package main
@@ -72,6 +75,9 @@ func main() {
 		{"RunBFS", testRunBFS},
 		{"RunNeighborhood", testRunNeighborhood},
 		{"RunCommunities", testRunCommunities},
+		// Phase 5: New algorithms
+		{"RunKCore", testRunKCore},
+		{"RunBetweenness", testRunBetweenness},
 		// Resource management tests
 		{"CancelJob", testCancelJob},
 		{"Release", testRelease},
@@ -544,6 +550,40 @@ func testRunCommunities(ctx context.Context, client *graphengine.Client) error {
 	}
 
 	log.Printf("  Communities (Louvain): %d membership values, %d communities", len(result.Membership), len(communities))
+	return nil
+}
+
+func testRunKCore(ctx context.Context, client *graphengine.Client) error {
+	if graphRef == nil {
+		return fmt.Errorf("no graph reference from previous test")
+	}
+
+	result, err := client.KCore(ctx, graphRef)
+	if err != nil {
+		return fmt.Errorf("KCore failed: %w", err)
+	}
+	if len(result.Coreness) != 10 {
+		return fmt.Errorf("expected 10 coreness values, got %d", len(result.Coreness))
+	}
+
+	log.Printf("  KCore: %d vertices, max_core=%d", len(result.Coreness), result.MaxCore)
+	return nil
+}
+
+func testRunBetweenness(ctx context.Context, client *graphengine.Client) error {
+	if graphRef == nil {
+		return fmt.Errorf("no graph reference from previous test")
+	}
+
+	result, err := client.Betweenness(ctx, graphRef)
+	if err != nil {
+		return fmt.Errorf("Betweenness failed: %w", err)
+	}
+	if len(result.Scores) != 10 {
+		return fmt.Errorf("expected 10 betweenness scores, got %d", len(result.Scores))
+	}
+
+	log.Printf("  Betweenness: %d scores computed", len(result.Scores))
 	return nil
 }
 

@@ -234,8 +234,13 @@ func TestScheduler_CancelJob(t *testing.T) {
 	// Wait a bit
 	time.Sleep(100 * time.Millisecond)
 
-	if job.State != JobStateCanceled && job.State != JobStateFailed {
-		t.Errorf("expected job state CANCELED or FAILED, got %s", job.State.String())
+	// Read state under lock to avoid race condition
+	job.mu.Lock()
+	state := job.State
+	job.mu.Unlock()
+
+	if state != JobStateCanceled && state != JobStateFailed {
+		t.Errorf("expected job state CANCELED or FAILED, got %s", state.String())
 	}
 }
 

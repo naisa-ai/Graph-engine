@@ -9,6 +9,49 @@ import (
 	"github.com/google/uuid"
 )
 
+// ColumnData holds typed column data for vertices or edges.
+type ColumnData struct {
+	Name    string
+	Type    ColumnType
+	BoolVal []bool
+	U32Val  []uint32
+	U64Val  []uint64
+	F32Val  []float32
+	F64Val  []float64
+	StrVal  []string
+}
+
+// ColumnType represents the data type of a column.
+type ColumnType int32
+
+const (
+	ColumnTypeBool   ColumnType = 0
+	ColumnTypeU32    ColumnType = 1
+	ColumnTypeU64    ColumnType = 2
+	ColumnTypeF32    ColumnType = 3
+	ColumnTypeF64    ColumnType = 4
+	ColumnTypeString ColumnType = 5
+)
+
+// Length returns the number of values in the column.
+func (c *ColumnData) Length() int {
+	switch c.Type {
+	case ColumnTypeBool:
+		return len(c.BoolVal)
+	case ColumnTypeU32:
+		return len(c.U32Val)
+	case ColumnTypeU64:
+		return len(c.U64Val)
+	case ColumnTypeF32:
+		return len(c.F32Val)
+	case ColumnTypeF64:
+		return len(c.F64Val)
+	case ColumnTypeString:
+		return len(c.StrVal)
+	}
+	return 0
+}
+
 // Build represents an in-progress graph build.
 type Build struct {
 	ID        string
@@ -27,6 +70,10 @@ type Build struct {
 	EdgesDstStr []string
 	EdgesKind   []uint32
 	EdgesWeight []float32
+
+	// Column data
+	VertexColumns map[string]*ColumnData
+	EdgeColumns   map[string]*ColumnData
 
 	// Metadata
 	Labels map[string]string
@@ -77,11 +124,13 @@ func (s *BuildStore) CreateBuild(graphName string, directed bool, labels map[str
 
 	buildID := uuid.New().String()
 	s.builds[buildID] = &Build{
-		ID:        buildID,
-		GraphName: graphName,
-		Directed:  directed,
-		CreatedAt: time.Now(),
-		Labels:    labels,
+		ID:            buildID,
+		GraphName:     graphName,
+		Directed:      directed,
+		CreatedAt:     time.Now(),
+		Labels:        labels,
+		VertexColumns: make(map[string]*ColumnData),
+		EdgeColumns:   make(map[string]*ColumnData),
 	}
 
 	return buildID, nil
@@ -181,6 +230,62 @@ func (s *BuildStore) AddEdgesStr(buildID string, src, dst []string, kind []uint3
 		build.EdgesWeight = append(build.EdgesWeight, weight...)
 	}
 
+	return nil
+}
+
+// AddVertexColumn adds a vertex column to a build.
+// Column values must align with vertex order (length should match vertex count).
+func (s *BuildStore) AddVertexColumn(buildID, name string, data *ColumnData) error {
+	if name == "" {
+		return fmt.Errorf("column name is required")
+	}
+	if data == nil {
+		return fmt.Errorf("column data is required")
+	}
+
+	build := s.GetBuild(buildID)
+	if build == nil {
+		return fmt.Errorf("build not found: %s", buildID)
+	}
+
+	build.mu.Lock()
+	defer build.mu.Unlock()
+
+	// Initialize map if needed (shouldn't happen if CreateBuild is used)
+	if build.VertexColumns == nil {
+		build.VertexColumns = make(map[string]*ColumnData)
+	}
+
+	data.Name = name
+	build.VertexColumns[name] = data
+	return nil
+}
+
+// AddEdgeColumn adds an edge column to a build.
+// Column values must align with edge order (length should match edge count).
+func (s *BuildStore) AddEdgeColumn(buildID, name string, data *ColumnData) error {
+	if name == "" {
+		return fmt.Errorf("column name is required")
+	}
+	if data == nil {
+		return fmt.Errorf("column data is required")
+	}
+
+	build := s.GetBuild(buildID)
+	if build == nil {
+		return fmt.Errorf("build not found: %s", buildID)
+	}
+
+	build.mu.Lock()
+	defer build.mu.Unlock()
+
+	// Initialize map if needed
+	if build.EdgeColumns == nil {
+		build.EdgeColumns = make(map[string]*ColumnData)
+	}
+
+	data.Name = name
+	build.EdgeColumns[name] = data
 	return nil
 }
 

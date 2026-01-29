@@ -1,0 +1,92 @@
+# =============================================================================
+# Graph-engine Base Dockerfile
+# =============================================================================
+# This Dockerfile creates a base image with all dependencies pre-installed:
+# - Build tools (gcc, make, pkg-config, cmake)
+# - igraph library (built from source with thread-safety enabled)
+# - Go modules downloaded
+#
+# This image is used as a base for test runs to avoid re-downloading
+# dependencies every time.
+#
+# Build:
+#   make docker-base
+#
+# The base image is tagged as: graph-engine-base:latest
+# =============================================================================
+
+FROM golang:1.24-bookworm
+
+WORKDIR /app
+
+# igraph version to build
+ARG IGRAPH_VERSION=0.10.15
+
+# Install build dependencies for igraph and Go
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    make \
+    pkg-config \
+    gcc \
+    g++ \
+    libc6-dev \
+    cmake \
+    ninja-build \
+    curl \
+    libxml2-dev \
+    libglpk-dev \
+    libblas-dev \
+    liblapack-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Build igraph from source with thread-safety enabled
+# Key flags:
+#   - IGRAPH_ENABLE_TLS=ON: Enable thread-local storage for thread safety
+#   - IGRAPH_USE_INTERNAL_ARPACK=ON: Use bundled ARPACK (external ARPACK is not thread-safe)
+#   - IGRAPH_OPENMP_SUPPORT=ON: Enable OpenMP parallelization
+RUN curl -sL https://github.com/igraph/igraph/releases/download/${IGRAPH_VERSION}/igraph-${IGRAPH_VERSION}.tar.gz | tar xz \
+    && cd igraph-${IGRAPH_VERSION} \
+    && mkdir build && cd build \
+    && cmake .. -GNinja \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/usr/local \
+        -DIGRAPH_ENABLE_TLS=ON \
+        -DIGRAPH_USE_INTERNAL_ARPACK=ON \
+        -DIGRAPH_USE_INTERNAL_BLAS=OFF \
+        -DIGRAPH_USE_INTERNAL_LAPACK=OFF \
+        -DIGRAPH_USE_INTERNAL_GLPK=OFF \
+        -DIGRAPH_GRAPHML_SUPPORT=ON \
+        -DIGRAPH_OPENMP_SUPPORT=ON \
+        -DBUILD_SHARED_LIBS=ON \
+    && ninja \
+    && ninja install \
+    && ldconfig \
+    && cd /app \
+    && rm -rf igraph-${IGRAPH_VERSION}
+
+# Verify igraph installation and thread-safety
+RUN pkg-config --modversion igraph && \
+    echo "igraph CFLAGS: $(pkg-config --cflags igraph)" && \
+    echo "igraph LDFLAGS: $(pkg-config --libs igraph)"
+
+# Copy go mod files and download dependencies
+# This layer is cached as long as go.mod/go.sum don't change
+COPY go.mod go.sum ./
+RUN go mod download && go mod verify
+
+# Pre-compile standard library with CGO for faster test builds
+RUN CGO_ENABLED=1 \
+    CGO_CFLAGS="$(pkg-config --cflags igraph)" \
+    CGO_LDFLAGS="$(pkg-config --libs igraph)" \
+    go build -v std
+
+# Set CGO environment variables for convenience
+ENV CGO_ENABLED=1
+ENV CGO_CFLAGS="-I/usr/local/include/igraph"
+ENV CGO_LDFLAGS="-L/usr/local/lib -ligraph"
+ENV LD_LIBRARY_PATH="/usr/local/lib"
+ENV PKG_CONFIG_PATH="/usr/local/lib/pkgconfig"
+
+# Labels
+LABEL org.opencontainers.image.title="graph-engine-base"
+LABEL org.opencontainers.image.description="Base image for Graph Engine development with thread-safe igraph and Go modules"

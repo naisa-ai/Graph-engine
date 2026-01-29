@@ -86,12 +86,18 @@ func createLinearGraphForKSP() *GraphVersion {
 func TestComputeKShortestPaths_Basic(t *testing.T) {
 	version := createTestGraphForKSP()
 	ctx := context.Background()
+	g := createShimGraph(version)
+	if g == nil {
+		t.Fatal("failed to create shim graph")
+	}
+	defer g.Close()
+	shimCfg := &KSPShimConfig{ShimGraph: g}
 
 	config := DefaultKSPConfig(3)
 	config.ReturnVertices = true
 	config.ReturnEdges = true
 
-	result, err := ComputeKShortestPaths(ctx, version, nil, 5, 70, config, nil)
+	result, err := ComputeKShortestPaths(ctx, version, nil, 5, 70, config, shimCfg)
 	if err != nil {
 		t.Fatalf("ComputeKShortestPaths failed: %v", err)
 	}
@@ -132,9 +138,15 @@ func TestComputeKShortestPaths_Basic(t *testing.T) {
 func TestComputeKShortestPaths_SameNode(t *testing.T) {
 	version := createTestGraphForKSP()
 	ctx := context.Background()
+	g := createShimGraph(version)
+	if g == nil {
+		t.Fatal("failed to create shim graph")
+	}
+	defer g.Close()
+	shimCfg := &KSPShimConfig{ShimGraph: g}
 
 	config := DefaultKSPConfig(3)
-	result, err := ComputeKShortestPaths(ctx, version, nil, 5, 5, config, nil)
+	result, err := ComputeKShortestPaths(ctx, version, nil, 5, 5, config, shimCfg)
 	if err != nil {
 		t.Fatalf("ComputeKShortestPaths failed: %v", err)
 	}
@@ -167,9 +179,15 @@ func TestComputeKShortestPaths_NoPath(t *testing.T) {
 
 	version, _ := NewGraphVersion("v1", "disconnected", false, build)
 	ctx := context.Background()
+	g := createShimGraph(version)
+	if g == nil {
+		t.Fatal("failed to create shim graph")
+	}
+	defer g.Close()
+	shimCfg := &KSPShimConfig{ShimGraph: g}
 
 	config := DefaultKSPConfig(3)
-	result, err := ComputeKShortestPaths(ctx, version, nil, 1, 3, config, nil)
+	result, err := ComputeKShortestPaths(ctx, version, nil, 1, 3, config, shimCfg)
 	if err != nil {
 		t.Fatalf("ComputeKShortestPaths failed: %v", err)
 	}
@@ -186,12 +204,18 @@ func TestComputeKShortestPaths_NoPath(t *testing.T) {
 func TestComputeKShortestPaths_FewerThanK(t *testing.T) {
 	version := createLinearGraphForKSP()
 	ctx := context.Background()
+	g := createShimGraph(version)
+	if g == nil {
+		t.Fatal("failed to create shim graph")
+	}
+	defer g.Close()
+	shimCfg := &KSPShimConfig{ShimGraph: g}
 
 	// Ask for 5 paths in a linear graph (only 1 path exists)
 	config := DefaultKSPConfig(5)
 	config.ReturnVertices = true
 
-	result, err := ComputeKShortestPaths(ctx, version, nil, 1, 4, config, nil)
+	result, err := ComputeKShortestPaths(ctx, version, nil, 1, 4, config, shimCfg)
 	if err != nil {
 		t.Fatalf("ComputeKShortestPaths failed: %v", err)
 	}
@@ -209,12 +233,18 @@ func TestComputeKShortestPaths_FewerThanK(t *testing.T) {
 func TestComputeKShortestPaths_Weighted(t *testing.T) {
 	version := createTestGraphForKSPWeighted()
 	ctx := context.Background()
+	g := createShimGraph(version)
+	if g == nil {
+		t.Fatal("failed to create shim graph")
+	}
+	defer g.Close()
+	shimCfg := &KSPShimConfig{ShimGraph: g}
 
 	config := DefaultKSPConfig(3)
 	config.Weighted = true
 	config.ReturnVertices = true
 
-	result, err := ComputeKShortestPaths(ctx, version, nil, 5, 70, config, nil)
+	result, err := ComputeKShortestPaths(ctx, version, nil, 5, 70, config, shimCfg)
 	if err != nil {
 		t.Fatalf("ComputeKShortestPaths failed: %v", err)
 	}
@@ -232,12 +262,18 @@ func TestComputeKShortestPaths_Weighted(t *testing.T) {
 func TestComputeKShortestPaths_DiversityPenalty(t *testing.T) {
 	version := createTestGraphForKSP()
 	ctx := context.Background()
+	g := createShimGraph(version)
+	if g == nil {
+		t.Fatal("failed to create shim graph")
+	}
+	defer g.Close()
+	shimCfg := &KSPShimConfig{ShimGraph: g}
 
 	// First, run without penalty
 	configNoPenalty := DefaultKSPConfig(3)
 	configNoPenalty.ReturnVertices = true
 	configNoPenalty.Weighted = true
-	resultNoPenalty, err := ComputeKShortestPaths(ctx, version, nil, 5, 70, configNoPenalty, nil)
+	resultNoPenalty, err := ComputeKShortestPaths(ctx, version, nil, 5, 70, configNoPenalty, shimCfg)
 	if err != nil {
 		t.Fatalf("ComputeKShortestPaths (no penalty) failed: %v", err)
 	}
@@ -247,7 +283,7 @@ func TestComputeKShortestPaths_DiversityPenalty(t *testing.T) {
 	configPenalty.ReturnVertices = true
 	configPenalty.Weighted = true
 	configPenalty.DiversityPenalty = 2.0 // Double the weight for reused edges
-	resultPenalty, err := ComputeKShortestPaths(ctx, version, nil, 5, 70, configPenalty, nil)
+	resultPenalty, err := ComputeKShortestPaths(ctx, version, nil, 5, 70, configPenalty, shimCfg)
 	if err != nil {
 		t.Fatalf("ComputeKShortestPaths (penalty) failed: %v", err)
 	}
@@ -261,6 +297,12 @@ func TestComputeKShortestPaths_DiversityPenalty(t *testing.T) {
 func TestComputeKShortestPaths_MaxCandidates(t *testing.T) {
 	version := createTestGraphForKSP()
 	ctx := context.Background()
+	g := createShimGraph(version)
+	if g == nil {
+		t.Fatal("failed to create shim graph")
+	}
+	defer g.Close()
+	shimCfg := &KSPShimConfig{ShimGraph: g}
 
 	// Use a very small max_candidates limit
 	config := &KSPConfig{
@@ -269,7 +311,7 @@ func TestComputeKShortestPaths_MaxCandidates(t *testing.T) {
 		ReturnVertices: true,
 	}
 
-	result, err := ComputeKShortestPaths(ctx, version, nil, 5, 70, config, nil)
+	result, err := ComputeKShortestPaths(ctx, version, nil, 5, 70, config, shimCfg)
 	if err != nil {
 		t.Fatalf("ComputeKShortestPaths failed: %v", err)
 	}
@@ -284,6 +326,12 @@ func TestComputeKShortestPaths_MaxCandidates(t *testing.T) {
 
 func TestComputeKShortestPaths_Timeout(t *testing.T) {
 	version := createTestGraphForKSP()
+	g := createShimGraph(version)
+	if g == nil {
+		t.Fatal("failed to create shim graph")
+	}
+	defer g.Close()
+	shimCfg := &KSPShimConfig{ShimGraph: g}
 
 	// Use a very short timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Nanosecond)
@@ -293,7 +341,7 @@ func TestComputeKShortestPaths_Timeout(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	config := DefaultKSPConfig(100)
-	result, err := ComputeKShortestPaths(ctx, version, nil, 5, 70, config, nil)
+	result, err := ComputeKShortestPaths(ctx, version, nil, 5, 70, config, shimCfg)
 	if err != nil {
 		t.Fatalf("ComputeKShortestPaths failed: %v", err)
 	}
@@ -310,6 +358,12 @@ func TestComputeKShortestPaths_Timeout(t *testing.T) {
 func TestComputeKShortestPaths_OnView(t *testing.T) {
 	version := createTestGraphForKSP()
 	ctx := context.Background()
+	g := createShimGraph(version)
+	if g == nil {
+		t.Fatal("failed to create shim graph")
+	}
+	defer g.Close()
+	shimCfg := &KSPShimConfig{ShimGraph: g}
 
 	// Create a view that excludes some vertices (node 60)
 	// This should force different paths
@@ -336,7 +390,7 @@ func TestComputeKShortestPaths_OnView(t *testing.T) {
 	config := DefaultKSPConfig(3)
 	config.ReturnVertices = true
 
-	result, err := ComputeKShortestPaths(ctx, version, view, 5, 70, config, nil)
+	result, err := ComputeKShortestPaths(ctx, version, view, 5, 70, config, shimCfg)
 	if err != nil {
 		t.Fatalf("ComputeKShortestPaths on view failed: %v", err)
 	}
@@ -433,47 +487,6 @@ func TestHashKSPParams(t *testing.T) {
 	hash4 := HashKSPParams(1, 2, 5, "weight", "view123") // different k
 	if hash1 == hash4 {
 		t.Error("different params should produce different hash")
-	}
-}
-
-func TestPathKey(t *testing.T) {
-	path1 := []uint32{1, 2, 3}
-	path2 := []uint32{1, 2, 3}
-	path3 := []uint32{1, 2, 4}
-
-	key1 := pathKeyGo(path1)
-	key2 := pathKeyGo(path2)
-	key3 := pathKeyGo(path3)
-
-	if key1 != key2 {
-		t.Errorf("same paths should have same key: %s != %s", key1, key2)
-	}
-
-	if key1 == key3 {
-		t.Error("different paths should have different keys")
-	}
-}
-
-func TestPathPrefixMatches(t *testing.T) {
-	tests := []struct {
-		name   string
-		path1  []uint32
-		path2  []uint32
-		expect bool
-	}{
-		{"same", []uint32{1, 2, 3}, []uint32{1, 2, 3}, true},
-		{"different", []uint32{1, 2, 3}, []uint32{1, 2, 4}, false},
-		{"different length", []uint32{1, 2}, []uint32{1, 2, 3}, false},
-		{"empty", []uint32{}, []uint32{}, true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := pathPrefixMatchesGo(tt.path1, tt.path2)
-			if got != tt.expect {
-				t.Errorf("pathPrefixMatches() = %v, want %v", got, tt.expect)
-			}
-		})
 	}
 }
 
