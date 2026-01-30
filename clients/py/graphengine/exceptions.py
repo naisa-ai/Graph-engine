@@ -77,11 +77,11 @@ class JobFailedError(GraphEngineError):
         super().__init__(message, None, cause)
 
 
-def wrap_grpc_error(err: grpc.RpcError, operation: str) -> GraphEngineError:
+def wrap_grpc_error(err: grpc.RpcError, operation: str = "") -> GraphEngineError:
     """Wrap a gRPC error with a more specific exception type."""
     code = err.code()
     details = err.details() or str(err)
-    message = f"{operation}: {details}"
+    message = f"{operation}: {details}" if operation else details
 
     if code == grpc.StatusCode.NOT_FOUND:
         return NotFoundError(message, err)
