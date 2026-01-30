@@ -3,7 +3,7 @@
 import grpc
 import warnings
 
-from . import graph_engine_ops_pb2 as graphengine_dot_v1_dot_graph__engine__ops__pb2
+from graphengine.gen import graph_engine_ops_pb2 as graphengine_dot_v1_dot_graph__engine__ops__pb2
 
 GRPC_GENERATED_VERSION = '1.76.0'
 GRPC_VERSION = grpc.__version__

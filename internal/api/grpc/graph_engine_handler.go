@@ -365,6 +365,7 @@ func (h *GraphEngineHandler) PublishBuild(ctx context.Context, req *gepb.Publish
 			// Store result for caching
 			paramsHash := service.HashParams("betweenness", betwConfig.SampleSize, betwConfig.Normalized, version.ID)
 			algoResult := service.NewAlgoResult(version.ID, service.AlgoKindBetweenness, paramsHash)
+			algoResult.NodeIDsU64 = version.GetAllNodeIDs()
 			algoResult.BetweennessF64 = betwResult.Scores
 			algoResult.Meta["sample_size"] = fmt.Sprintf("%d", betwConfig.SampleSize)
 			algoResult.Meta["normalized"] = fmt.Sprintf("%t", betwConfig.Normalized)
@@ -1400,11 +1401,178 @@ func (h *GraphEngineHandler) Run(ctx context.Context, req *gepb.RunRequest) (*ge
 		result = service.NewAlgoResult(version.ID, service.AlgoKindBetweenness, paramsHash)
 		result.AddSpan(cacheSpan)
 		result.AddSpan(computeSpan)
+		result.NodeIDsU64 = version.GetAllNodeIDs()
 		result.BetweennessF64 = betwResult.Scores
 		result.Meta["sample_size"] = fmt.Sprintf("%d", betwSpec.GetSampleSize())
 		result.Meta["normalized"] = fmt.Sprintf("%t", betwSpec.GetNormalized())
 		result.Meta["max_score"] = fmt.Sprintf("%.6f", betwResult.MaxScore)
 		result.Meta["min_score"] = fmt.Sprintf("%.6f", betwResult.MinScore)
+
+	case *gepb.AlgoSpec_Closeness:
+		closeSpec := spec.Closeness
+		h.logger.Info("running closeness algorithm",
+			"version_id", version.ID,
+			"mode", closeSpec.GetMode(),
+			"normalized", closeSpec.GetNormalized(),
+			"weight_column", closeSpec.GetWeightColumn(),
+		)
+
+		// Build cache key
+		viewHash := ""
+		if view != nil {
+			viewHash = view.SpecHash
+		}
+		paramsHash := service.HashClosenessParams(
+			int32(closeSpec.GetMode()),
+			closeSpec.GetNormalized(),
+			closeSpec.GetWeightColumn(),
+			viewHash,
+		)
+
+		// Check cache
+		cacheSpan := service.NewTraceSpan("cache_lookup")
+		if req.GetAllowCache() {
+			if cached, found := h.resultStore.GetByKey(version.ID, service.AlgoKindCloseness, paramsHash); found {
+				cacheSpan.End()
+				cacheSpan.AddTag("hit", "true")
+				h.logger.Info("cache hit for closeness", "result_id", cached.ID)
+				metrics.IncCacheHits("closeness")
+				return &gepb.RunResponse{
+					Job: &gepb.JobRef{JobId: cached.ID},
+				}, nil
+			}
+		}
+		cacheSpan.End()
+		cacheSpan.AddTag("hit", "false")
+		metrics.IncCacheMisses("closeness")
+
+		// Create shim graph for closeness computation
+		shimGraph, err := createShimGraphForVersion(version)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to create shim graph: %v", err)
+		}
+		defer shimGraph.Close()
+		closeShimCfg := &service.ClosenessShimConfig{ShimGraph: shimGraph}
+
+		// Build closeness config
+		closeConfig := &service.ClosenessConfig{
+			Mode:         int32(closeSpec.GetMode()),
+			Normalized:   closeSpec.GetNormalized(),
+			WeightColumn: closeSpec.GetWeightColumn(),
+		}
+
+		// Compute closeness
+		computeSpan := service.NewTraceSpan("compute")
+		computeStart := time.Now()
+		closeResult, err := service.ComputeCloseness(
+			ctx,
+			version,
+			view,
+			closeConfig,
+			closeShimCfg,
+		)
+		computeSpan.End()
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to compute closeness: %v", err)
+		}
+		metrics.RecordAlgoDuration("closeness", time.Since(computeStart).Seconds())
+
+		// Build result
+		result = service.NewAlgoResult(version.ID, service.AlgoKindCloseness, paramsHash)
+		result.AddSpan(cacheSpan)
+		result.AddSpan(computeSpan)
+		result.NodeIDsU64 = version.GetAllNodeIDs()
+		result.ClosenessF64 = closeResult.Scores
+		result.Meta["mode"] = fmt.Sprintf("%d", closeSpec.GetMode())
+		result.Meta["normalized"] = fmt.Sprintf("%t", closeSpec.GetNormalized())
+		result.Meta["max_score"] = fmt.Sprintf("%.6f", closeResult.MaxScore)
+		result.Meta["min_score"] = fmt.Sprintf("%.6f", closeResult.MinScore)
+
+	case *gepb.AlgoSpec_Pagerank:
+		prSpec := spec.Pagerank
+		h.logger.Info("running pagerank algorithm",
+			"version_id", version.ID,
+			"damping", prSpec.GetDamping(),
+			"max_iterations", prSpec.GetMaxIterations(),
+			"epsilon", prSpec.GetEpsilon(),
+			"weight_column", prSpec.GetWeightColumn(),
+		)
+
+		// Build cache key
+		viewHash := ""
+		if view != nil {
+			viewHash = view.SpecHash
+		}
+		paramsHash := service.HashPageRankParams(
+			prSpec.GetDamping(),
+			prSpec.GetMaxIterations(),
+			prSpec.GetEpsilon(),
+			prSpec.GetWeightColumn(),
+			viewHash,
+		)
+
+		// Check cache
+		cacheSpan := service.NewTraceSpan("cache_lookup")
+		if req.GetAllowCache() {
+			if cached, found := h.resultStore.GetByKey(version.ID, service.AlgoKindPageRank, paramsHash); found {
+				cacheSpan.End()
+				cacheSpan.AddTag("hit", "true")
+				h.logger.Info("cache hit for pagerank", "result_id", cached.ID)
+				metrics.IncCacheHits("pagerank")
+				return &gepb.RunResponse{
+					Job: &gepb.JobRef{JobId: cached.ID},
+				}, nil
+			}
+		}
+		cacheSpan.End()
+		cacheSpan.AddTag("hit", "false")
+		metrics.IncCacheMisses("pagerank")
+
+		// Create shim graph for pagerank computation
+		shimGraph, err := createShimGraphForVersion(version)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to create shim graph: %v", err)
+		}
+		defer shimGraph.Close()
+		prShimCfg := &service.PageRankShimConfig{ShimGraph: shimGraph}
+
+		// Build pagerank config
+		prConfig := &service.PageRankConfig{
+			Damping:       prSpec.GetDamping(),
+			MaxIterations: prSpec.GetMaxIterations(),
+			Epsilon:       prSpec.GetEpsilon(),
+			WeightColumn:  prSpec.GetWeightColumn(),
+		}
+
+		// Compute pagerank
+		computeSpan := service.NewTraceSpan("compute")
+		computeStart := time.Now()
+		prResult, err := service.ComputePageRank(
+			ctx,
+			version,
+			view,
+			prConfig,
+			prShimCfg,
+		)
+		computeSpan.End()
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to compute pagerank: %v", err)
+		}
+		metrics.RecordAlgoDuration("pagerank", time.Since(computeStart).Seconds())
+
+		// Build result
+		result = service.NewAlgoResult(version.ID, service.AlgoKindPageRank, paramsHash)
+		result.AddSpan(cacheSpan)
+		result.AddSpan(computeSpan)
+		result.NodeIDsU64 = version.GetAllNodeIDs()
+		result.PageRankF64 = prResult.Scores
+		result.PageRankIterations = prResult.Iterations
+		result.PageRankConverged = prResult.Converged
+		result.Meta["damping"] = fmt.Sprintf("%.4f", prSpec.GetDamping())
+		result.Meta["iterations"] = fmt.Sprintf("%d", prResult.Iterations)
+		result.Meta["converged"] = fmt.Sprintf("%t", prResult.Converged)
+		result.Meta["max_score"] = fmt.Sprintf("%.6f", prResult.MaxScore)
+		result.Meta["min_score"] = fmt.Sprintf("%.6f", prResult.MinScore)
 
 	default:
 		return nil, status.Errorf(codes.InvalidArgument, "unknown algorithm type")
@@ -1656,12 +1824,43 @@ func (h *GraphEngineHandler) GetResult(req *gepb.GetResultRequest, stream gepb.G
 		chunk := &gepb.ResultChunk{
 			Payload: &gepb.ResultChunk_Betweenness{
 				Betweenness: &gepb.BetweennessResult{
-					Scores: result.BetweennessF64,
+					NodeIdsU64: result.NodeIDsU64,
+					Scores:     result.BetweennessF64,
 				},
 			},
 		}
 		if err := stream.Send(chunk); err != nil {
 			return status.Errorf(codes.Internal, "failed to send betweenness: %v", err)
+		}
+
+	case service.AlgoKindCloseness:
+		// Send closeness result
+		chunk := &gepb.ResultChunk{
+			Payload: &gepb.ResultChunk_Closeness{
+				Closeness: &gepb.ClosenessResult{
+					NodeIdsU64: result.NodeIDsU64,
+					Scores:     result.ClosenessF64,
+				},
+			},
+		}
+		if err := stream.Send(chunk); err != nil {
+			return status.Errorf(codes.Internal, "failed to send closeness: %v", err)
+		}
+
+	case service.AlgoKindPageRank:
+		// Send pagerank result
+		chunk := &gepb.ResultChunk{
+			Payload: &gepb.ResultChunk_Pagerank{
+				Pagerank: &gepb.PageRankResult{
+					NodeIdsU64: result.NodeIDsU64,
+					Scores:     result.PageRankF64,
+					Iterations: result.PageRankIterations,
+					Converged:  result.PageRankConverged,
+				},
+			},
+		}
+		if err := stream.Send(chunk); err != nil {
+			return status.Errorf(codes.Internal, "failed to send pagerank: %v", err)
 		}
 	}
 

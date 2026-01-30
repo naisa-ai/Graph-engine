@@ -343,6 +343,8 @@ message AlgoSpec {
     // New algorithms
     KCoreSpec kcore = 40;
     BetweennessSpec betweenness = 41;
+    ClosenessSpec closeness = 42;
+    PageRankSpec pagerank = 43;
   }
 }
 
@@ -465,6 +467,39 @@ message BetweennessSpec {
   string weight_column = 3;
 }
 
+message ClosenessSpec {
+  // Closeness mode for directed graphs.
+  enum Mode {
+    ALL = 0;  // Use all paths (default, works for undirected)
+    OUT = 1;  // Use outgoing paths only
+    IN = 2;   // Use incoming paths only
+  }
+  Mode mode = 1;
+
+  // Whether to normalize scores (0-1 range).
+  bool normalized = 2;
+
+  // Optional edge weight column (empty = unweighted).
+  string weight_column = 3;
+}
+
+message PageRankSpec {
+  // Damping factor (probability of following a link vs random jump).
+  // Default: 0.85 (standard value)
+  double damping = 1;
+
+  // Maximum number of iterations.
+  // Default: 100
+  uint32 max_iterations = 2;
+
+  // Convergence tolerance (stop when change < epsilon).
+  // Default: 1e-6
+  double epsilon = 3;
+
+  // Optional edge weight column (empty = unweighted).
+  string weight_column = 4;
+}
+
 // =============================================================================
 // Jobs / Results
 // =============================================================================
@@ -525,6 +560,8 @@ message ResultChunk {
     KCoreResult kcore = 23;
     BetweennessResult betweenness = 24;
     ComponentsResult components = 25;
+    ClosenessResult closeness = 26;
+    PageRankResult pagerank = 27;
 
     // Terminal marker
     bool done = 99;
@@ -591,8 +628,44 @@ message KCoreResult {
 }
 
 message BetweennessResult {
-  // Betweenness centrality score per vertex (indexed by vertex index).
-  repeated double scores = 1;
+  // External node IDs corresponding to each score value.
+  // node_ids_u64[i] is the external node ID for vertex with internal index i.
+  // Use this to map scores[i] to its original node.
+  repeated uint64 node_ids_u64 = 1;
+
+  // Betweenness centrality score per vertex (parallel array with node_ids_u64).
+  // scores[i] is the betweenness centrality score for the vertex node_ids_u64[i].
+  repeated double scores = 2;
+}
+
+message ClosenessResult {
+  // External node IDs corresponding to each score value.
+  // node_ids_u64[i] is the external node ID for vertex with internal index i.
+  // Use this to map scores[i] to its original node.
+  repeated uint64 node_ids_u64 = 1;
+
+  // Closeness centrality score per vertex (parallel array with node_ids_u64).
+  // scores[i] is the closeness centrality score for the vertex node_ids_u64[i].
+  // Higher values indicate nodes that can reach others more quickly.
+  repeated double scores = 2;
+}
+
+message PageRankResult {
+  // External node IDs corresponding to each score value.
+  // node_ids_u64[i] is the external node ID for vertex with internal index i.
+  // Use this to map scores[i] to its original node.
+  repeated uint64 node_ids_u64 = 1;
+
+  // PageRank score per vertex (parallel array with node_ids_u64).
+  // scores[i] is the PageRank score for the vertex node_ids_u64[i].
+  // Higher values indicate more "important" nodes in the link structure.
+  repeated double scores = 2;
+
+  // Number of iterations performed.
+  uint32 iterations = 3;
+
+  // Whether the algorithm converged within max_iterations.
+  bool converged = 4;
 }
 
 message ComponentsResult {

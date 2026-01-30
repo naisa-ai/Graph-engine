@@ -502,6 +502,58 @@ ge_status_t ge_run_betweenness_view(
     ge_result_t** out
 );
 
+// Compute closeness centrality for all vertices.
+// mode: 0=ALL (undirected), 1=OUT (outgoing), 2=IN (incoming)
+// normalized: whether to normalize scores
+// weights_or_null: edge weights (NULL for unweighted)
+// Result contains:
+//   - "scores": f64[] (closeness score per vertex)
+ge_status_t ge_run_closeness(
+    const ge_graph_t* g,
+    int mode,
+    int normalized,
+    const double* weights_or_null,
+    ge_result_t** out
+);
+
+// Closeness on a view.
+ge_status_t ge_run_closeness_view(
+    const ge_graph_t* g,
+    const ge_view_t* v,
+    int mode,
+    int normalized,
+    const double* weights_or_null,
+    ge_result_t** out
+);
+
+// Compute PageRank for all vertices.
+// damping: damping factor (0.85 typical)
+// max_iterations: maximum iterations (0 = default 100)
+// epsilon: convergence tolerance (0 = default 1e-6)
+// weights_or_null: edge weights (NULL for unweighted)
+// Result contains:
+//   - "scores": f64[] (PageRank score per vertex)
+//   - "iterations": u32[1] (number of iterations)
+ge_status_t ge_run_pagerank(
+    const ge_graph_t* g,
+    double damping,
+    uint32_t max_iterations,
+    double epsilon,
+    const double* weights_or_null,
+    ge_result_t** out
+);
+
+// PageRank on a view.
+ge_status_t ge_run_pagerank_view(
+    const ge_graph_t* g,
+    const ge_view_t* v,
+    double damping,
+    uint32_t max_iterations,
+    double epsilon,
+    const double* weights_or_null,
+    ge_result_t** out
+);
+
 // -----------------------------------------------------------------------------
 // Result extraction
 // -----------------------------------------------------------------------------

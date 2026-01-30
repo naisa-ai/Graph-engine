@@ -2171,3 +2171,237 @@ func (g *Graph) BetweennessOnView(v *View, sampleSize uint32, normalized bool, w
 		Scores: scores,
 	}, nil
 }
+
+// -----------------------------------------------------------------------------
+// Algorithm: Closeness Centrality
+// -----------------------------------------------------------------------------
+
+// ClosenessResult contains the result of closeness centrality computation.
+type ClosenessResult struct {
+	Scores []float64 // Closeness score for each vertex
+}
+
+// ClosenessMode represents the direction mode for closeness centrality.
+type ClosenessMode int
+
+const (
+	ClosenessAll ClosenessMode = 0 // Use all paths (for undirected graphs)
+	ClosenessOut ClosenessMode = 1 // Use outgoing paths only (for directed graphs)
+	ClosenessIn  ClosenessMode = 2 // Use incoming paths only (for directed graphs)
+)
+
+// Closeness computes closeness centrality for all vertices.
+// mode: direction mode (ClosenessAll, ClosenessOut, ClosenessIn)
+// normalized: whether to normalize the scores.
+// weights: optional edge weights (nil for unweighted).
+func (g *Graph) Closeness(mode ClosenessMode, normalized bool, weights []float64) (*ClosenessResult, error) {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	if g.closed || g.ptr == nil {
+		return nil, ErrShimClosed
+	}
+
+	var weightsPtr *C.double
+	if len(weights) > 0 {
+		weightsPtr = (*C.double)(unsafe.Pointer(&weights[0]))
+	}
+
+	normalizedInt := 0
+	if normalized {
+		normalizedInt = 1
+	}
+
+	var out *C.ge_result_t
+	status := C.ge_run_closeness(
+		g.ptr,
+		C.int(mode),
+		C.int(normalizedInt),
+		weightsPtr,
+		&out,
+	)
+	if status != C.GE_OK {
+		return nil, statusToError(status)
+	}
+
+	result := &Result{ptr: out}
+	defer result.Close()
+
+	scores, err := result.GetF64("scores")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get scores: %w", err)
+	}
+
+	return &ClosenessResult{
+		Scores: scores,
+	}, nil
+}
+
+// ClosenessOnView computes closeness centrality on a view.
+func (g *Graph) ClosenessOnView(v *View, mode ClosenessMode, normalized bool, weights []float64) (*ClosenessResult, error) {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	if g.closed || g.ptr == nil {
+		return nil, ErrShimClosed
+	}
+
+	v.mu.RLock()
+	defer v.mu.RUnlock()
+
+	if v.closed || v.ptr == nil {
+		return nil, ErrShimClosed
+	}
+
+	var weightsPtr *C.double
+	if len(weights) > 0 {
+		weightsPtr = (*C.double)(unsafe.Pointer(&weights[0]))
+	}
+
+	normalizedInt := 0
+	if normalized {
+		normalizedInt = 1
+	}
+
+	var out *C.ge_result_t
+	status := C.ge_run_closeness_view(
+		g.ptr,
+		v.ptr,
+		C.int(mode),
+		C.int(normalizedInt),
+		weightsPtr,
+		&out,
+	)
+	if status != C.GE_OK {
+		return nil, statusToError(status)
+	}
+
+	result := &Result{ptr: out}
+	defer result.Close()
+
+	scores, err := result.GetF64("scores")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get scores: %w", err)
+	}
+
+	return &ClosenessResult{
+		Scores: scores,
+	}, nil
+}
+
+// -----------------------------------------------------------------------------
+// Algorithm: PageRank
+// -----------------------------------------------------------------------------
+
+// PageRankResult contains the result of PageRank computation.
+type PageRankResult struct {
+	Scores     []float64 // PageRank score for each vertex
+	Iterations uint32    // Number of iterations performed
+	Converged  bool      // Whether the algorithm converged
+}
+
+// PageRank computes PageRank for all vertices.
+// damping: damping factor (0.85 typical, 0 for default)
+// maxIterations: maximum iterations (0 for default 100)
+// epsilon: convergence tolerance (0 for default 1e-6)
+// weights: optional edge weights (nil for unweighted)
+func (g *Graph) PageRank(damping float64, maxIterations uint32, epsilon float64, weights []float64) (*PageRankResult, error) {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	if g.closed || g.ptr == nil {
+		return nil, ErrShimClosed
+	}
+
+	var weightsPtr *C.double
+	if len(weights) > 0 {
+		weightsPtr = (*C.double)(unsafe.Pointer(&weights[0]))
+	}
+
+	var out *C.ge_result_t
+	status := C.ge_run_pagerank(
+		g.ptr,
+		C.double(damping),
+		C.uint32_t(maxIterations),
+		C.double(epsilon),
+		weightsPtr,
+		&out,
+	)
+	if status != C.GE_OK {
+		return nil, statusToError(status)
+	}
+
+	result := &Result{ptr: out}
+	defer result.Close()
+
+	scores, err := result.GetF64("scores")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get scores: %w", err)
+	}
+
+	iterations, err := result.GetU32("iterations")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get iterations: %w", err)
+	}
+
+	return &PageRankResult{
+		Scores:     scores,
+		Iterations: iterations[0],
+		Converged:  true, // PRPACK always converges or fails
+	}, nil
+}
+
+// PageRankOnView computes PageRank on a view.
+func (g *Graph) PageRankOnView(v *View, damping float64, maxIterations uint32, epsilon float64, weights []float64) (*PageRankResult, error) {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+
+	if g.closed || g.ptr == nil {
+		return nil, ErrShimClosed
+	}
+
+	v.mu.RLock()
+	defer v.mu.RUnlock()
+
+	if v.closed || v.ptr == nil {
+		return nil, ErrShimClosed
+	}
+
+	var weightsPtr *C.double
+	if len(weights) > 0 {
+		weightsPtr = (*C.double)(unsafe.Pointer(&weights[0]))
+	}
+
+	var out *C.ge_result_t
+	status := C.ge_run_pagerank_view(
+		g.ptr,
+		v.ptr,
+		C.double(damping),
+		C.uint32_t(maxIterations),
+		C.double(epsilon),
+		weightsPtr,
+		&out,
+	)
+	if status != C.GE_OK {
+		return nil, statusToError(status)
+	}
+
+	result := &Result{ptr: out}
+	defer result.Close()
+
+	scores, err := result.GetF64("scores")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get scores: %w", err)
+	}
+
+	iterations, err := result.GetU32("iterations")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get iterations: %w", err)
+	}
+
+	return &PageRankResult{
+		Scores:     scores,
+		Iterations: iterations[0],
+		Converged:  true,
+	}, nil
+}

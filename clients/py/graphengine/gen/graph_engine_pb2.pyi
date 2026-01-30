@@ -374,7 +374,7 @@ class RunResponse(_message.Message):
     def __init__(self, job: _Optional[_Union[JobRef, _Mapping]] = ...) -> None: ...
 
 class AlgoSpec(_message.Message):
-    __slots__ = ("components", "communities", "shortest_path", "k_shortest_paths", "distances", "bfs", "neighborhood", "st_mincut", "corridor", "kcore", "betweenness")
+    __slots__ = ("components", "communities", "shortest_path", "k_shortest_paths", "distances", "bfs", "neighborhood", "st_mincut", "corridor", "kcore", "betweenness", "closeness", "pagerank")
     COMPONENTS_FIELD_NUMBER: _ClassVar[int]
     COMMUNITIES_FIELD_NUMBER: _ClassVar[int]
     SHORTEST_PATH_FIELD_NUMBER: _ClassVar[int]
@@ -386,6 +386,8 @@ class AlgoSpec(_message.Message):
     CORRIDOR_FIELD_NUMBER: _ClassVar[int]
     KCORE_FIELD_NUMBER: _ClassVar[int]
     BETWEENNESS_FIELD_NUMBER: _ClassVar[int]
+    CLOSENESS_FIELD_NUMBER: _ClassVar[int]
+    PAGERANK_FIELD_NUMBER: _ClassVar[int]
     components: ComponentsSpec
     communities: CommunitiesSpec
     shortest_path: ShortestPathSpec
@@ -397,7 +399,9 @@ class AlgoSpec(_message.Message):
     corridor: CorridorSpec
     kcore: KCoreSpec
     betweenness: BetweennessSpec
-    def __init__(self, components: _Optional[_Union[ComponentsSpec, _Mapping]] = ..., communities: _Optional[_Union[CommunitiesSpec, _Mapping]] = ..., shortest_path: _Optional[_Union[ShortestPathSpec, _Mapping]] = ..., k_shortest_paths: _Optional[_Union[KShortestPathsSpec, _Mapping]] = ..., distances: _Optional[_Union[DistancesSpec, _Mapping]] = ..., bfs: _Optional[_Union[BFSSpec, _Mapping]] = ..., neighborhood: _Optional[_Union[NeighborhoodQuerySpec, _Mapping]] = ..., st_mincut: _Optional[_Union[STMinCutSpec, _Mapping]] = ..., corridor: _Optional[_Union[CorridorSpec, _Mapping]] = ..., kcore: _Optional[_Union[KCoreSpec, _Mapping]] = ..., betweenness: _Optional[_Union[BetweennessSpec, _Mapping]] = ...) -> None: ...
+    closeness: ClosenessSpec
+    pagerank: PageRankSpec
+    def __init__(self, components: _Optional[_Union[ComponentsSpec, _Mapping]] = ..., communities: _Optional[_Union[CommunitiesSpec, _Mapping]] = ..., shortest_path: _Optional[_Union[ShortestPathSpec, _Mapping]] = ..., k_shortest_paths: _Optional[_Union[KShortestPathsSpec, _Mapping]] = ..., distances: _Optional[_Union[DistancesSpec, _Mapping]] = ..., bfs: _Optional[_Union[BFSSpec, _Mapping]] = ..., neighborhood: _Optional[_Union[NeighborhoodQuerySpec, _Mapping]] = ..., st_mincut: _Optional[_Union[STMinCutSpec, _Mapping]] = ..., corridor: _Optional[_Union[CorridorSpec, _Mapping]] = ..., kcore: _Optional[_Union[KCoreSpec, _Mapping]] = ..., betweenness: _Optional[_Union[BetweennessSpec, _Mapping]] = ..., closeness: _Optional[_Union[ClosenessSpec, _Mapping]] = ..., pagerank: _Optional[_Union[PageRankSpec, _Mapping]] = ...) -> None: ...
 
 class ComponentsSpec(_message.Message):
     __slots__ = ("mode",)
@@ -557,6 +561,36 @@ class BetweennessSpec(_message.Message):
     weight_column: str
     def __init__(self, sample_size: _Optional[int] = ..., normalized: bool = ..., weight_column: _Optional[str] = ...) -> None: ...
 
+class ClosenessSpec(_message.Message):
+    __slots__ = ("mode", "normalized", "weight_column")
+    class Mode(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
+        __slots__ = ()
+        ALL: _ClassVar[ClosenessSpec.Mode]
+        OUT: _ClassVar[ClosenessSpec.Mode]
+        IN: _ClassVar[ClosenessSpec.Mode]
+    ALL: ClosenessSpec.Mode
+    OUT: ClosenessSpec.Mode
+    IN: ClosenessSpec.Mode
+    MODE_FIELD_NUMBER: _ClassVar[int]
+    NORMALIZED_FIELD_NUMBER: _ClassVar[int]
+    WEIGHT_COLUMN_FIELD_NUMBER: _ClassVar[int]
+    mode: ClosenessSpec.Mode
+    normalized: bool
+    weight_column: str
+    def __init__(self, mode: _Optional[_Union[ClosenessSpec.Mode, str]] = ..., normalized: bool = ..., weight_column: _Optional[str] = ...) -> None: ...
+
+class PageRankSpec(_message.Message):
+    __slots__ = ("damping", "max_iterations", "epsilon", "weight_column")
+    DAMPING_FIELD_NUMBER: _ClassVar[int]
+    MAX_ITERATIONS_FIELD_NUMBER: _ClassVar[int]
+    EPSILON_FIELD_NUMBER: _ClassVar[int]
+    WEIGHT_COLUMN_FIELD_NUMBER: _ClassVar[int]
+    damping: float
+    max_iterations: int
+    epsilon: float
+    weight_column: str
+    def __init__(self, damping: _Optional[float] = ..., max_iterations: _Optional[int] = ..., epsilon: _Optional[float] = ..., weight_column: _Optional[str] = ...) -> None: ...
+
 class GetJobRequest(_message.Message):
     __slots__ = ("job",)
     JOB_FIELD_NUMBER: _ClassVar[int]
@@ -608,7 +642,7 @@ class GetResultRequest(_message.Message):
     def __init__(self, result: _Optional[_Union[ResultRef, _Mapping]] = ...) -> None: ...
 
 class ResultChunk(_message.Message):
-    __slots__ = ("header", "u32", "u64", "f64", "bytes", "shortest_path", "st_mincut", "corridor", "kcore", "betweenness", "components", "done")
+    __slots__ = ("header", "u32", "u64", "f64", "bytes", "shortest_path", "st_mincut", "corridor", "kcore", "betweenness", "components", "closeness", "pagerank", "done")
     HEADER_FIELD_NUMBER: _ClassVar[int]
     U32_FIELD_NUMBER: _ClassVar[int]
     U64_FIELD_NUMBER: _ClassVar[int]
@@ -620,6 +654,8 @@ class ResultChunk(_message.Message):
     KCORE_FIELD_NUMBER: _ClassVar[int]
     BETWEENNESS_FIELD_NUMBER: _ClassVar[int]
     COMPONENTS_FIELD_NUMBER: _ClassVar[int]
+    CLOSENESS_FIELD_NUMBER: _ClassVar[int]
+    PAGERANK_FIELD_NUMBER: _ClassVar[int]
     DONE_FIELD_NUMBER: _ClassVar[int]
     header: ResultHeader
     u32: U32Buffer
@@ -632,8 +668,10 @@ class ResultChunk(_message.Message):
     kcore: KCoreResult
     betweenness: BetweennessResult
     components: ComponentsResult
+    closeness: ClosenessResult
+    pagerank: PageRankResult
     done: bool
-    def __init__(self, header: _Optional[_Union[ResultHeader, _Mapping]] = ..., u32: _Optional[_Union[U32Buffer, _Mapping]] = ..., u64: _Optional[_Union[U64Buffer, _Mapping]] = ..., f64: _Optional[_Union[F64Buffer, _Mapping]] = ..., bytes: _Optional[_Union[BytesBuffer, _Mapping]] = ..., shortest_path: _Optional[_Union[ShortestPathResult, _Mapping]] = ..., st_mincut: _Optional[_Union[STMinCutResult, _Mapping]] = ..., corridor: _Optional[_Union[CorridorResult, _Mapping]] = ..., kcore: _Optional[_Union[KCoreResult, _Mapping]] = ..., betweenness: _Optional[_Union[BetweennessResult, _Mapping]] = ..., components: _Optional[_Union[ComponentsResult, _Mapping]] = ..., done: bool = ...) -> None: ...
+    def __init__(self, header: _Optional[_Union[ResultHeader, _Mapping]] = ..., u32: _Optional[_Union[U32Buffer, _Mapping]] = ..., u64: _Optional[_Union[U64Buffer, _Mapping]] = ..., f64: _Optional[_Union[F64Buffer, _Mapping]] = ..., bytes: _Optional[_Union[BytesBuffer, _Mapping]] = ..., shortest_path: _Optional[_Union[ShortestPathResult, _Mapping]] = ..., st_mincut: _Optional[_Union[STMinCutResult, _Mapping]] = ..., corridor: _Optional[_Union[CorridorResult, _Mapping]] = ..., kcore: _Optional[_Union[KCoreResult, _Mapping]] = ..., betweenness: _Optional[_Union[BetweennessResult, _Mapping]] = ..., components: _Optional[_Union[ComponentsResult, _Mapping]] = ..., closeness: _Optional[_Union[ClosenessResult, _Mapping]] = ..., pagerank: _Optional[_Union[PageRankResult, _Mapping]] = ..., done: bool = ...) -> None: ...
 
 class ResultHeader(_message.Message):
     __slots__ = ("result_id", "type", "vcount", "ecount", "meta")
@@ -734,10 +772,32 @@ class KCoreResult(_message.Message):
     def __init__(self, node_ids_u64: _Optional[_Iterable[int]] = ..., coreness: _Optional[_Iterable[int]] = ..., max_core: _Optional[int] = ...) -> None: ...
 
 class BetweennessResult(_message.Message):
-    __slots__ = ("scores",)
+    __slots__ = ("node_ids_u64", "scores")
+    NODE_IDS_U64_FIELD_NUMBER: _ClassVar[int]
     SCORES_FIELD_NUMBER: _ClassVar[int]
+    node_ids_u64: _containers.RepeatedScalarFieldContainer[int]
     scores: _containers.RepeatedScalarFieldContainer[float]
-    def __init__(self, scores: _Optional[_Iterable[float]] = ...) -> None: ...
+    def __init__(self, node_ids_u64: _Optional[_Iterable[int]] = ..., scores: _Optional[_Iterable[float]] = ...) -> None: ...
+
+class ClosenessResult(_message.Message):
+    __slots__ = ("node_ids_u64", "scores")
+    NODE_IDS_U64_FIELD_NUMBER: _ClassVar[int]
+    SCORES_FIELD_NUMBER: _ClassVar[int]
+    node_ids_u64: _containers.RepeatedScalarFieldContainer[int]
+    scores: _containers.RepeatedScalarFieldContainer[float]
+    def __init__(self, node_ids_u64: _Optional[_Iterable[int]] = ..., scores: _Optional[_Iterable[float]] = ...) -> None: ...
+
+class PageRankResult(_message.Message):
+    __slots__ = ("node_ids_u64", "scores", "iterations", "converged")
+    NODE_IDS_U64_FIELD_NUMBER: _ClassVar[int]
+    SCORES_FIELD_NUMBER: _ClassVar[int]
+    ITERATIONS_FIELD_NUMBER: _ClassVar[int]
+    CONVERGED_FIELD_NUMBER: _ClassVar[int]
+    node_ids_u64: _containers.RepeatedScalarFieldContainer[int]
+    scores: _containers.RepeatedScalarFieldContainer[float]
+    iterations: int
+    converged: bool
+    def __init__(self, node_ids_u64: _Optional[_Iterable[int]] = ..., scores: _Optional[_Iterable[float]] = ..., iterations: _Optional[int] = ..., converged: bool = ...) -> None: ...
 
 class ComponentsResult(_message.Message):
     __slots__ = ("node_ids_u64", "membership", "num_components")

@@ -61,6 +61,8 @@ const (
 	AlgoKindCorridor     AlgoKind = "corridor"
 	AlgoKindKCore        AlgoKind = "kcore"
 	AlgoKindBetweenness  AlgoKind = "betweenness"
+	AlgoKindCloseness    AlgoKind = "closeness"
+	AlgoKindPageRank     AlgoKind = "pagerank"
 )
 
 // AlgoResult represents the result of an algorithm execution.
@@ -94,6 +96,14 @@ type AlgoResult struct {
 
 	// Betweenness centrality results
 	BetweennessF64 []float64 // Betweenness score per vertex
+
+	// Closeness centrality results
+	ClosenessF64 []float64 // Closeness score per vertex
+
+	// PageRank results
+	PageRankF64       []float64 // PageRank score per vertex
+	PageRankIterations uint32   // Number of iterations performed
+	PageRankConverged  bool     // Whether the algorithm converged
 
 	// Trace spans for observability
 	Spans []*TraceSpan
@@ -204,6 +214,12 @@ func (r *AlgoResult) EstimateMemory() uint64 {
 
 	// Betweenness data
 	total += uint64(len(r.BetweennessF64)) * 8
+
+	// Closeness data
+	total += uint64(len(r.ClosenessF64)) * 8
+
+	// PageRank data
+	total += uint64(len(r.PageRankF64)) * 8
 
 	// Struct overhead
 	total += uint64(unsafe.Sizeof(*r))

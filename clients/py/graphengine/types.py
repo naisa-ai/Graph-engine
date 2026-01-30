@@ -128,8 +128,62 @@ class KCoreResult:
 
 @dataclass
 class BetweennessResult:
-    """Result of betweenness centrality computation."""
+    """Result of betweenness centrality computation.
+    
+    Attributes:
+        node_ids: External node IDs corresponding to each score value.
+                  node_ids[i] is the external node ID for vertex with internal index i.
+        scores: Betweenness centrality score per vertex (parallel array with node_ids).
+                scores[i] is the betweenness centrality score for the vertex node_ids[i].
+    
+    To get a dict mapping node_id -> betweenness_score:
+        >>> result = client.betweenness(graph)
+        >>> betweenness_by_node = dict(zip(result.node_ids, result.scores))
+    """
+    node_ids: List[int] = field(default_factory=list)
     scores: List[float] = field(default_factory=list)
+
+
+@dataclass
+class ClosenessResult:
+    """Result of closeness centrality computation.
+    
+    Attributes:
+        node_ids: External node IDs corresponding to each score value.
+                  node_ids[i] is the external node ID for vertex with internal index i.
+        scores: Closeness centrality score per vertex (parallel array with node_ids).
+                scores[i] is the closeness centrality score for the vertex node_ids[i].
+                Higher values indicate nodes that can reach others more quickly.
+    
+    To get a dict mapping node_id -> closeness_score:
+        >>> result = client.closeness(graph)
+        >>> closeness_by_node = dict(zip(result.node_ids, result.scores))
+    """
+    node_ids: List[int] = field(default_factory=list)
+    scores: List[float] = field(default_factory=list)
+
+
+@dataclass
+class PageRankResult:
+    """Result of PageRank computation.
+    
+    Attributes:
+        node_ids: External node IDs corresponding to each score value.
+                  node_ids[i] is the external node ID for vertex with internal index i.
+        scores: PageRank score per vertex (parallel array with node_ids).
+                scores[i] is the PageRank score for the vertex node_ids[i].
+                Higher values indicate more "important" nodes in the link structure.
+        iterations: Number of iterations performed.
+        converged: Whether the algorithm converged within max_iterations.
+    
+    To get a dict mapping node_id -> pagerank_score:
+        >>> result = client.pagerank(graph)
+        >>> pagerank_by_node = dict(zip(result.node_ids, result.scores))
+    """
+    node_ids: List[int] = field(default_factory=list)
+    scores: List[float] = field(default_factory=list)
+    iterations: int = 0
+    converged: bool = False
 
 
 # =============================================================================

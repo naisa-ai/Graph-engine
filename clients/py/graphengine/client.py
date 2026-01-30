@@ -30,6 +30,7 @@ from graphengine.exceptions import (
 from graphengine.types import (
     BetweennessResult,
     CacheStats,
+    ClosenessResult,
     ComponentsResult,
     CorridorResult,
     DistanceMatrix,
@@ -41,6 +42,7 @@ from graphengine.types import (
     JobRef,
     KCoreResult,
     MinCutResult,
+    PageRankResult,
     PathResult,
     ResultRef,
     TraceSpan,
@@ -916,8 +918,111 @@ class GraphEngineClient:
         for chunk in self._get_result_chunks(result):
             if chunk.HasField("betweenness"):
                 b = chunk.betweenness
+                betw_result.node_ids = list(b.node_ids_u64)
                 betw_result.scores = list(b.scores)
         return betw_result
+
+    def closeness(
+        self,
+        graph: GraphRef,
+        mode: str = "all",
+        normalized: bool = False,
+        weight_column: str = "",
+    ) -> ClosenessResult:
+        """Compute closeness centrality.
+        
+        Closeness centrality measures how close a node is to all other nodes.
+        It is the reciprocal of the average shortest path distance to all other nodes.
+        Higher closeness = node can reach others more quickly.
+        
+        Args:
+            graph: Reference to the graph
+            mode: Direction mode for directed graphs:
+                - "all": Use all paths (default, for undirected graphs)
+                - "out": Use outgoing paths only
+                - "in": Use incoming paths only
+            normalized: Whether to normalize scores to 0-1 range
+            weight_column: Optional edge weight column
+            
+        Returns:
+            ClosenessResult with scores for all vertices
+        """
+        mode_map = {
+            "all": gepb.ClosenessSpec.ALL,
+            "out": gepb.ClosenessSpec.OUT,
+            "in": gepb.ClosenessSpec.IN,
+        }
+        mode_enum = mode_map.get(mode, gepb.ClosenessSpec.ALL)
+        
+        algo = gepb.AlgoSpec(
+            closeness=gepb.ClosenessSpec(
+                mode=mode_enum,
+                normalized=normalized,
+                weight_column=weight_column,
+            )
+        )
+        job = self._run(graph, None, algo)
+        result = self.wait_for_job(job)
+        return self._collect_closeness_result(result)
+
+    def _collect_closeness_result(self, result: ResultRef) -> ClosenessResult:
+        """Collect closeness result from chunks."""
+        close_result = ClosenessResult()
+        for chunk in self._get_result_chunks(result):
+            if chunk.HasField("closeness"):
+                c = chunk.closeness
+                close_result.node_ids = list(c.node_ids_u64)
+                close_result.scores = list(c.scores)
+        return close_result
+
+    def pagerank(
+        self,
+        graph: GraphRef,
+        damping: float = 0.85,
+        max_iterations: int = 100,
+        epsilon: float = 1e-6,
+        weight_column: str = "",
+    ) -> PageRankResult:
+        """Compute PageRank.
+        
+        PageRank measures the "importance" of nodes based on the structure of
+        incoming links. Nodes with high PageRank receive many links from other
+        high-PageRank nodes.
+        
+        Args:
+            graph: Reference to the graph
+            damping: Damping factor (probability of following a link vs random jump).
+                     Typical value: 0.85
+            max_iterations: Maximum number of iterations
+            epsilon: Convergence tolerance (stop when change < epsilon)
+            weight_column: Optional edge weight column
+            
+        Returns:
+            PageRankResult with scores for all vertices
+        """
+        algo = gepb.AlgoSpec(
+            pagerank=gepb.PageRankSpec(
+                damping=damping,
+                max_iterations=max_iterations,
+                epsilon=epsilon,
+                weight_column=weight_column,
+            )
+        )
+        job = self._run(graph, None, algo)
+        result = self.wait_for_job(job)
+        return self._collect_pagerank_result(result)
+
+    def _collect_pagerank_result(self, result: ResultRef) -> PageRankResult:
+        """Collect pagerank result from chunks."""
+        pr_result = PageRankResult()
+        for chunk in self._get_result_chunks(result):
+            if chunk.HasField("pagerank"):
+                p = chunk.pagerank
+                pr_result.node_ids = list(p.node_ids_u64)
+                pr_result.scores = list(p.scores)
+                pr_result.iterations = p.iterations
+                pr_result.converged = p.converged
+        return pr_result
 
     # =========================================================================
     # Job Management

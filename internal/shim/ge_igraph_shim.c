@@ -2958,6 +2958,282 @@ ge_status_t ge_run_betweenness_view(
 }
 
 // -----------------------------------------------------------------------------
+// Algorithm: Closeness Centrality
+// -----------------------------------------------------------------------------
+
+ge_status_t ge_run_closeness(
+    const ge_graph_t* g,
+    int mode,
+    int normalized,
+    const double* weights_or_null,
+    ge_result_t** out
+) {
+    if (!g || !out) {
+        set_error("invalid argument");
+        return GE_ERR_INVALID_ARG;
+    }
+    
+    igraph_vector_t closeness;
+    igraph_error_t err = igraph_vector_init(&closeness, 0);
+    if (err != IGRAPH_SUCCESS) {
+        set_error("igraph error: %d", err);
+        return GE_ERR_IGRAPH;
+    }
+    
+    // Set up weights if provided
+    igraph_vector_t weights_vec;
+    igraph_vector_t* weights_ptr = NULL;
+    
+    if (weights_or_null) {
+        err = igraph_vector_init(&weights_vec, (igraph_integer_t)g->m_edges);
+        if (err != IGRAPH_SUCCESS) {
+            igraph_vector_destroy(&closeness);
+            set_error("igraph error initializing weights: %d", err);
+            return GE_ERR_IGRAPH;
+        }
+        for (size_t i = 0; i < g->m_edges; i++) {
+            VECTOR(weights_vec)[i] = weights_or_null[i];
+        }
+        weights_ptr = &weights_vec;
+    }
+    
+    // Determine igraph mode
+    igraph_neimode_t igraph_mode;
+    if (!g->directed || mode == 0) {
+        igraph_mode = IGRAPH_ALL;
+    } else if (mode == 1) {
+        igraph_mode = IGRAPH_OUT;
+    } else {
+        igraph_mode = IGRAPH_IN;
+    }
+    
+    // Compute closeness centrality
+    err = igraph_closeness(
+        &g->g,
+        &closeness,
+        NULL,  // no reachable count needed
+        NULL,  // no disconnected flag needed
+        igraph_vss_all(),
+        igraph_mode,
+        weights_ptr,
+        normalized ? 1 : 0
+    );
+    
+    if (weights_ptr) {
+        igraph_vector_destroy(&weights_vec);
+    }
+    
+    if (err != IGRAPH_SUCCESS) {
+        igraph_vector_destroy(&closeness);
+        set_error("igraph error computing closeness: %d", err);
+        return GE_ERR_IGRAPH;
+    }
+    
+    ge_result_t* r = create_result();
+    if (!r) {
+        igraph_vector_destroy(&closeness);
+        set_error("out of memory");
+        return GE_ERR_OUT_OF_MEMORY;
+    }
+    
+    // Copy scores
+    size_t n = (size_t)igraph_vector_size(&closeness);
+    double* scores = (double*)malloc(n * sizeof(double));
+    if (!scores && n > 0) {
+        igraph_vector_destroy(&closeness);
+        ge_result_destroy(r);
+        set_error("out of memory");
+        return GE_ERR_OUT_OF_MEMORY;
+    }
+    
+    for (size_t i = 0; i < n; i++) {
+        scores[i] = VECTOR(closeness)[i];
+    }
+    igraph_vector_destroy(&closeness);
+    
+    ge_status_t status = add_buffer_f64(r, "scores", scores, n);
+    free(scores);
+    if (status != GE_OK) {
+        ge_result_destroy(r);
+        return status;
+    }
+    
+    *out = r;
+    return GE_OK;
+}
+
+ge_status_t ge_run_closeness_view(
+    const ge_graph_t* g,
+    const ge_view_t* v,
+    int mode,
+    int normalized,
+    const double* weights_or_null,
+    ge_result_t** out
+) {
+    if (!g || !v || !out) {
+        set_error("invalid argument");
+        return GE_ERR_INVALID_ARG;
+    }
+    
+    ge_graph_t temp_g;
+    temp_g.g = v->g;
+    temp_g.n_vertices = v->n_vertices;
+    temp_g.m_edges = v->m_edges;
+    temp_g.directed = g->directed;
+    
+    return ge_run_closeness(&temp_g, mode, normalized, weights_or_null, out);
+}
+
+// -----------------------------------------------------------------------------
+// Algorithm: PageRank
+// -----------------------------------------------------------------------------
+
+ge_status_t ge_run_pagerank(
+    const ge_graph_t* g,
+    double damping,
+    uint32_t max_iterations,
+    double epsilon,
+    const double* weights_or_null,
+    ge_result_t** out
+) {
+    if (!g || !out) {
+        set_error("invalid argument");
+        return GE_ERR_INVALID_ARG;
+    }
+    
+    // Apply defaults
+    if (damping <= 0 || damping >= 1) {
+        damping = 0.85;  // Standard PageRank damping factor
+    }
+    if (max_iterations == 0) {
+        max_iterations = 100;
+    }
+    if (epsilon <= 0) {
+        epsilon = 1e-6;
+    }
+    
+    igraph_vector_t pagerank;
+    igraph_error_t err = igraph_vector_init(&pagerank, 0);
+    if (err != IGRAPH_SUCCESS) {
+        set_error("igraph error: %d", err);
+        return GE_ERR_IGRAPH;
+    }
+    
+    // Set up weights if provided
+    igraph_vector_t weights_vec;
+    igraph_vector_t* weights_ptr = NULL;
+    
+    if (weights_or_null) {
+        err = igraph_vector_init(&weights_vec, (igraph_integer_t)g->m_edges);
+        if (err != IGRAPH_SUCCESS) {
+            igraph_vector_destroy(&pagerank);
+            set_error("igraph error initializing weights: %d", err);
+            return GE_ERR_IGRAPH;
+        }
+        for (size_t i = 0; i < g->m_edges; i++) {
+            VECTOR(weights_vec)[i] = weights_or_null[i];
+        }
+        weights_ptr = &weights_vec;
+    }
+    
+    igraph_real_t eigenvalue;
+    
+    // Compute PageRank using PRPACK (fast, reliable)
+    // Note: PRPACK doesn't use arpack options, it uses its own convergence
+    err = igraph_pagerank(
+        &g->g,
+        IGRAPH_PAGERANK_ALGO_PRPACK,  // Use PRPACK algorithm (faster)
+        &pagerank,
+        &eigenvalue,
+        igraph_vss_all(),
+        g->directed ? IGRAPH_DIRECTED : IGRAPH_UNDIRECTED,
+        damping,
+        weights_ptr,
+        NULL  // PRPACK doesn't need options
+    );
+    
+    if (weights_ptr) {
+        igraph_vector_destroy(&weights_vec);
+    }
+    
+    if (err != IGRAPH_SUCCESS) {
+        igraph_vector_destroy(&pagerank);
+        set_error("igraph error computing pagerank: %d", err);
+        return GE_ERR_IGRAPH;
+    }
+    
+    ge_result_t* r = create_result();
+    if (!r) {
+        igraph_vector_destroy(&pagerank);
+        set_error("out of memory");
+        return GE_ERR_OUT_OF_MEMORY;
+    }
+    
+    // Copy scores
+    size_t n = (size_t)igraph_vector_size(&pagerank);
+    double* scores = (double*)malloc(n * sizeof(double));
+    if (!scores && n > 0) {
+        igraph_vector_destroy(&pagerank);
+        ge_result_destroy(r);
+        set_error("out of memory");
+        return GE_ERR_OUT_OF_MEMORY;
+    }
+    
+    for (size_t i = 0; i < n; i++) {
+        scores[i] = VECTOR(pagerank)[i];
+    }
+    igraph_vector_destroy(&pagerank);
+    
+    ge_status_t status = add_buffer_f64(r, "scores", scores, n);
+    free(scores);
+    if (status != GE_OK) {
+        ge_result_destroy(r);
+        return status;
+    }
+    
+    // Store iterations info (PRPACK doesn't expose actual iterations, store max_iterations)
+    uint32_t* iterations = (uint32_t*)malloc(sizeof(uint32_t));
+    if (!iterations) {
+        ge_result_destroy(r);
+        set_error("out of memory");
+        return GE_ERR_OUT_OF_MEMORY;
+    }
+    *iterations = max_iterations > 0 ? max_iterations : 100;
+    status = add_buffer_u32(r, "iterations", iterations, 1);
+    free(iterations);
+    if (status != GE_OK) {
+        ge_result_destroy(r);
+        return status;
+    }
+    
+    *out = r;
+    return GE_OK;
+}
+
+ge_status_t ge_run_pagerank_view(
+    const ge_graph_t* g,
+    const ge_view_t* v,
+    double damping,
+    uint32_t max_iterations,
+    double epsilon,
+    const double* weights_or_null,
+    ge_result_t** out
+) {
+    if (!g || !v || !out) {
+        set_error("invalid argument");
+        return GE_ERR_INVALID_ARG;
+    }
+    
+    ge_graph_t temp_g;
+    temp_g.g = v->g;
+    temp_g.n_vertices = v->n_vertices;
+    temp_g.m_edges = v->m_edges;
+    temp_g.directed = g->directed;
+    
+    return ge_run_pagerank(&temp_g, damping, max_iterations, epsilon, weights_or_null, out);
+}
+
+// -----------------------------------------------------------------------------
 // Version info
 // -----------------------------------------------------------------------------
 

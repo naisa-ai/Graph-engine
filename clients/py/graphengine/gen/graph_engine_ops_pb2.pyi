@@ -2,7 +2,7 @@ import datetime
 
 from google.protobuf import timestamp_pb2 as _timestamp_pb2
 from google.protobuf import duration_pb2 as _duration_pb2
-from graphengine.v1 import graph_engine_pb2 as _graph_engine_pb2
+from graphengine.gen import graph_engine_pb2 as _graph_engine_pb2
 from google.protobuf.internal import containers as _containers
 from google.protobuf.internal import enum_type_wrapper as _enum_type_wrapper
 from google.protobuf import descriptor as _descriptor
