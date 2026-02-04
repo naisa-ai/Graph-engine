@@ -2,7 +2,7 @@ import datetime
 
 from google.protobuf import timestamp_pb2 as _timestamp_pb2
 from google.protobuf import duration_pb2 as _duration_pb2
-from graphengine.gen import graph_engine_pb2 as _graph_engine_pb2
+from graphengine.v1 import graph_engine_pb2 as _graph_engine_pb2
 from google.protobuf.internal import containers as _containers
 from google.protobuf.internal import enum_type_wrapper as _enum_type_wrapper
 from google.protobuf import descriptor as _descriptor
@@ -149,7 +149,7 @@ class TraceSpan(_message.Message):
     def __init__(self, name: _Optional[str] = ..., duration: _Optional[_Union[datetime.timedelta, _duration_pb2.Duration, _Mapping]] = ..., tags: _Optional[_Mapping[str, str]] = ...) -> None: ...
 
 class ExportSubgraphRequest(_message.Message):
-    __slots__ = ("graph", "view", "format")
+    __slots__ = ("graph", "view", "format", "max_edges")
     class Format(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
         __slots__ = ()
         EDGE_LIST: _ClassVar[ExportSubgraphRequest.Format]
@@ -159,10 +159,12 @@ class ExportSubgraphRequest(_message.Message):
     GRAPH_FIELD_NUMBER: _ClassVar[int]
     VIEW_FIELD_NUMBER: _ClassVar[int]
     FORMAT_FIELD_NUMBER: _ClassVar[int]
+    MAX_EDGES_FIELD_NUMBER: _ClassVar[int]
     graph: _graph_engine_pb2.GraphRef
     view: _graph_engine_pb2.ViewRef
     format: ExportSubgraphRequest.Format
-    def __init__(self, graph: _Optional[_Union[_graph_engine_pb2.GraphRef, _Mapping]] = ..., view: _Optional[_Union[_graph_engine_pb2.ViewRef, _Mapping]] = ..., format: _Optional[_Union[ExportSubgraphRequest.Format, str]] = ...) -> None: ...
+    max_edges: int
+    def __init__(self, graph: _Optional[_Union[_graph_engine_pb2.GraphRef, _Mapping]] = ..., view: _Optional[_Union[_graph_engine_pb2.ViewRef, _Mapping]] = ..., format: _Optional[_Union[ExportSubgraphRequest.Format, str]] = ..., max_edges: _Optional[int] = ...) -> None: ...
 
 class ExportChunk(_message.Message):
     __slots__ = ("data",)

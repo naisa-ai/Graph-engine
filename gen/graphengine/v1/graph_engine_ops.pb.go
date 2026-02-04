@@ -790,8 +790,11 @@ type ExportSubgraphRequest struct {
 	//
 	//	*ExportSubgraphRequest_Graph
 	//	*ExportSubgraphRequest_View
-	Target        isExportSubgraphRequest_Target `protobuf_oneof:"target"`
-	Format        ExportSubgraphRequest_Format   `protobuf:"varint,3,opt,name=format,proto3,enum=graphengine.v1.ExportSubgraphRequest_Format" json:"format,omitempty"`
+	Target isExportSubgraphRequest_Target `protobuf_oneof:"target"`
+	Format ExportSubgraphRequest_Format   `protobuf:"varint,3,opt,name=format,proto3,enum=graphengine.v1.ExportSubgraphRequest_Format" json:"format,omitempty"`
+	// Maximum edges to export (0 = use server default of 10000).
+	// Set to a large value (e.g., 1000000) for large graphs.
+	MaxEdges      uint64 `protobuf:"varint,4,opt,name=max_edges,json=maxEdges,proto3" json:"max_edges,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -856,6 +859,13 @@ func (x *ExportSubgraphRequest) GetFormat() ExportSubgraphRequest_Format {
 		return x.Format
 	}
 	return ExportSubgraphRequest_EDGE_LIST
+}
+
+func (x *ExportSubgraphRequest) GetMaxEdges() uint64 {
+	if x != nil {
+		return x.MaxEdges
+	}
+	return 0
 }
 
 type isExportSubgraphRequest_Target interface {
@@ -977,11 +987,12 @@ const file_graphengine_v1_graph_engine_ops_proto_rawDesc = "" +
 	"\x04tags\x18\x03 \x03(\v2#.graphengine.v1.TraceSpan.TagsEntryR\x04tags\x1a7\n" +
 	"\tTagsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xea\x01\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x87\x02\n" +
 	"\x15ExportSubgraphRequest\x120\n" +
 	"\x05graph\x18\x01 \x01(\v2\x18.graphengine.v1.GraphRefH\x00R\x05graph\x12-\n" +
 	"\x04view\x18\x02 \x01(\v2\x17.graphengine.v1.ViewRefH\x00R\x04view\x12D\n" +
-	"\x06format\x18\x03 \x01(\x0e2,.graphengine.v1.ExportSubgraphRequest.FormatR\x06format\" \n" +
+	"\x06format\x18\x03 \x01(\x0e2,.graphengine.v1.ExportSubgraphRequest.FormatR\x06format\x12\x1b\n" +
+	"\tmax_edges\x18\x04 \x01(\x04R\bmaxEdges\" \n" +
 	"\x06Format\x12\r\n" +
 	"\tEDGE_LIST\x10\x00\x12\a\n" +
 	"\x03CSV\x10\x01B\b\n" +

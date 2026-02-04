@@ -228,6 +228,7 @@ func (h *GraphEngineOpsHandler) TraceJob(ctx context.Context, req *gepb.TraceJob
 func (h *GraphEngineOpsHandler) ExportSubgraph(req *gepb.ExportSubgraphRequest, stream gepb.GraphEngineOps_ExportSubgraphServer) error {
 	h.logger.Info("ExportSubgraph called",
 		"format", req.GetFormat().String(),
+		"max_edges", req.GetMaxEdges(),
 	)
 
 	// Determine export format
@@ -241,10 +242,16 @@ func (h *GraphEngineOpsHandler) ExportSubgraph(req *gepb.ExportSubgraphRequest, 
 		exportFormat = service.ExportFormatEdgeList
 	}
 
+	// Determine max edges limit (use request value if specified, else default)
+	maxEdges := h.maxExportEdges
+	if req.GetMaxEdges() > 0 {
+		maxEdges = req.GetMaxEdges()
+	}
+
 	// Create exporter with config
 	exportConfig := service.ExportConfig{
 		Format:         exportFormat,
-		MaxEdges:       h.maxExportEdges,
+		MaxEdges:       maxEdges,
 		IncludeWeights: true,
 		IncludeKind:    true,
 		ChunkSize:      1000,

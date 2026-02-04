@@ -1279,12 +1279,14 @@ class GraphEngineClient:
         self,
         graph: GraphRef,
         format: ExportFormat = ExportFormat.EDGE_LIST,
+        max_edges: int = 0,
     ) -> Iterator[bytes]:
         """Export graph data.
         
         Args:
             graph: Graph reference
             format: Export format
+            max_edges: Maximum edges to export (0 = use server default of 10000)
             
         Yields:
             Chunks of exported data
@@ -1300,6 +1302,7 @@ class GraphEngineClient:
                     version_id=graph.version_id,
                 ),
                 format=format_map.get(format, ops_pb.ExportSubgraphRequest.EDGE_LIST),
+                max_edges=max_edges,
             )
             for chunk in self._ops_stub.ExportSubgraph(
                 req,
@@ -1314,12 +1317,14 @@ class GraphEngineClient:
         self,
         view: ViewRef,
         format: ExportFormat = ExportFormat.EDGE_LIST,
+        max_edges: int = 0,
     ) -> Iterator[bytes]:
         """Export view data.
         
         Args:
             view: View reference
             format: Export format
+            max_edges: Maximum edges to export (0 = use server default of 10000)
             
         Yields:
             Chunks of exported data
@@ -1332,6 +1337,7 @@ class GraphEngineClient:
             req = ops_pb.ExportSubgraphRequest(
                 view=gepb.ViewRef(view_id=view.view_id),
                 format=format_map.get(format, ops_pb.ExportSubgraphRequest.EDGE_LIST),
+                max_edges=max_edges,
             )
             for chunk in self._ops_stub.ExportSubgraph(
                 req,
@@ -1346,34 +1352,38 @@ class GraphEngineClient:
         self,
         graph: GraphRef,
         format: ExportFormat = ExportFormat.EDGE_LIST,
+        max_edges: int = 0,
     ) -> bytes:
         """Export graph data to bytes.
         
         Args:
             graph: Graph reference
             format: Export format
+            max_edges: Maximum edges to export (0 = use server default of 10000)
             
         Returns:
             Exported data as bytes
         """
-        chunks = list(self.export_graph(graph, format))
+        chunks = list(self.export_graph(graph, format, max_edges))
         return b"".join(chunks)
 
     def export_view_to_bytes(
         self,
         view: ViewRef,
         format: ExportFormat = ExportFormat.EDGE_LIST,
+        max_edges: int = 0,
     ) -> bytes:
         """Export view data to bytes.
         
         Args:
             view: View reference
             format: Export format
+            max_edges: Maximum edges to export (0 = use server default of 10000)
             
         Returns:
             Exported data as bytes
         """
-        chunks = list(self.export_view(view, format))
+        chunks = list(self.export_view(view, format, max_edges))
         return b"".join(chunks)
 
 
