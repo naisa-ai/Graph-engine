@@ -5,6 +5,7 @@ package graphengine
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"sync"
 	"time"
@@ -12,6 +13,7 @@ import (
 	gepb "github.com/naisa-ai/graph-engine/clients/go/gen/graphengine/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/protobuf/types/known/durationpb"
 )
 
 // Client provides a high-level interface to the Graph-engine service.
@@ -211,10 +213,25 @@ func (c *Client) ReleaseResult(ctx context.Context, result *gepb.ResultRef) (boo
 // Job Utilities
 // =============================================================================
 
+// Backoff schedule for async polling: 10ms, 20ms, then 100ms cap
+var asyncBackoff = []time.Duration{
+	10 * time.Millisecond,
+	20 * time.Millisecond,
+	100 * time.Millisecond, // Cap
+}
+
+// DefaultAlgorithmTimeout is the default maximum time to wait for an algorithm to complete.
+const DefaultAlgorithmTimeout = 5 * time.Minute
+
+// DefaultSyncTimeout is the default time the server waits for fast algorithm completion.
+const DefaultSyncTimeout = 10 * time.Millisecond
+
 // WaitForJob polls until a job completes and returns the result reference.
+// Default poll interval is 5ms for low-latency algorithm completion detection.
+// For long-running algorithms, consider using a longer poll interval (e.g., 100ms).
 func (c *Client) WaitForJob(ctx context.Context, job *gepb.JobRef, pollInterval time.Duration) (*gepb.ResultRef, error) {
 	if pollInterval <= 0 {
-		pollInterval = 100 * time.Millisecond
+		pollInterval = 5 * time.Millisecond // Fast polling for sub-ms algorithm completion
 	}
 
 	ticker := time.NewTicker(pollInterval)
@@ -253,14 +270,107 @@ func (c *Client) WaitForJob(ctx context.Context, job *gepb.JobRef, pollInterval 
 	}
 }
 
-// RunAndWait executes an algorithm and waits for completion.
-func (c *Client) RunAndWait(ctx context.Context, req *gepb.RunRequest) (*gepb.ResultRef, error) {
+// RunAndWait executes an algorithm with adaptive sync/async handling.
+// If the algorithm completes within sync_timeout (default 10ms), the result is
+// returned immediately from the single RPC call. Otherwise, the client polls
+// with graduated backoff (10ms, 20ms, 100ms cap) until completion or maxTimeout.
+//
+// maxTimeout is the maximum time to wait for the algorithm to complete.
+// Pass 0 to use DefaultAlgorithmTimeout (5 minutes).
+func (c *Client) RunAndWait(ctx context.Context, req *gepb.RunRequest, maxTimeout time.Duration) (*gepb.ResultRef, error) {
+	if maxTimeout <= 0 {
+		maxTimeout = DefaultAlgorithmTimeout
+	}
+
+	// Set default sync timeout if not specified
+	if req.SyncTimeout == nil {
+		req.SyncTimeout = durationpb.New(DefaultSyncTimeout)
+	}
+
+	rctx, cancel := c.context(ctx)
+	defer cancel()
+
+	resp, err := c.engine.Run(rctx, req)
+	if err != nil {
+		return nil, wrapError(err, "RunAndWait")
+	}
+
+	// Fast path: result available inline (completed within sync_timeout)
+	if resp.Completed != nil {
+		switch resp.Completed.State {
+		case gepb.GetJobResponse_SUCCEEDED:
+			return resp.Completed.Result, nil
+		case gepb.GetJobResponse_FAILED:
+			msg := "job failed"
+			if resp.Completed.Status != nil {
+				msg = resp.Completed.Status.Message
+			}
+			return nil, &GraphEngineError{Message: msg, Cause: ErrJobFailed}
+		case gepb.GetJobResponse_CANCELED:
+			return nil, &GraphEngineError{Message: "job canceled", Cause: ErrCanceled}
+		}
+	}
+
+	// Slow path: poll with graduated backoff and max timeout
+	return c.waitForJobWithBackoff(ctx, resp.Job, maxTimeout)
+}
+
+// waitForJobWithBackoff polls for job completion with graduated backoff.
+// Backoff schedule: 10ms, 20ms, then 100ms (cap).
+func (c *Client) waitForJobWithBackoff(ctx context.Context, job *gepb.JobRef, maxTimeout time.Duration) (*gepb.ResultRef, error) {
+	startTime := time.Now()
+
+	for i := 0; ; i++ {
+		// Check max timeout
+		if time.Since(startTime) >= maxTimeout {
+			return nil, &GraphEngineError{
+				Message: fmt.Sprintf("algorithm timeout after %v", maxTimeout),
+				Cause:   ErrTimeout,
+			}
+		}
+
+		// Get backoff delay (cap at last element)
+		idx := i
+		if idx >= len(asyncBackoff) {
+			idx = len(asyncBackoff) - 1
+		}
+
+		select {
+		case <-ctx.Done():
+			return nil, wrapError(ctx.Err(), "waitForJobWithBackoff")
+		case <-time.After(asyncBackoff[idx]):
+		}
+
+		resp, err := c.GetJob(ctx, job)
+		if err != nil {
+			return nil, err
+		}
+
+		switch resp.State {
+		case gepb.GetJobResponse_SUCCEEDED:
+			return resp.Result, nil
+		case gepb.GetJobResponse_FAILED:
+			msg := "job failed"
+			if resp.Status != nil {
+				msg = resp.Status.Message
+			}
+			return nil, &GraphEngineError{Message: msg, Cause: ErrJobFailed}
+		case gepb.GetJobResponse_CANCELED:
+			return nil, &GraphEngineError{Message: "job canceled", Cause: ErrCanceled}
+		}
+		// PENDING or RUNNING - continue polling
+	}
+}
+
+// RunAndWaitLegacy executes an algorithm and waits for completion using fixed polling.
+// Deprecated: Use RunAndWait instead for adaptive sync/async handling.
+func (c *Client) RunAndWaitLegacy(ctx context.Context, req *gepb.RunRequest) (*gepb.ResultRef, error) {
 	job, err := c.Run(ctx, req)
 	if err != nil {
 		return nil, err
 	}
 
-	return c.WaitForJob(ctx, job, 100*time.Millisecond)
+	return c.WaitForJob(ctx, job, 5*time.Millisecond)
 }
 
 // =============================================================================

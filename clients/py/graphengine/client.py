@@ -8,6 +8,7 @@ from __future__ import annotations
 import time
 from datetime import timedelta
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Dict,
@@ -1028,10 +1029,127 @@ class GraphEngineClient:
     # Job Management
     # =========================================================================
 
+    # Backoff schedule: 10ms, 20ms, then 100ms cap
+    ASYNC_BACKOFF = [0.010, 0.020, 0.100]  # seconds
+
+    # Default max timeout: 5 minutes
+    DEFAULT_ALGORITHM_TIMEOUT = 300.0  # seconds
+
+    # Default sync timeout: 10ms
+    DEFAULT_SYNC_TIMEOUT = 0.010  # seconds
+
+    def run_and_wait(
+        self,
+        graph: Optional[GraphRef] = None,
+        view: Optional[ViewRef] = None,
+        algo: Optional[Any] = None,
+        request: Optional[Any] = None,
+        sync_timeout: float = DEFAULT_SYNC_TIMEOUT,
+        max_timeout: float = DEFAULT_ALGORITHM_TIMEOUT,
+    ) -> ResultRef:
+        """Run algorithm with adaptive sync/async handling.
+        
+        If the algorithm completes within sync_timeout (default 10ms), the result
+        is returned immediately from the single RPC call. Otherwise, the client
+        polls with graduated backoff (10ms, 20ms, 100ms cap) until completion
+        or max_timeout.
+        
+        Args:
+            graph: Graph reference (mutually exclusive with view)
+            view: View reference (mutually exclusive with graph)
+            algo: Algorithm spec (gepb.AlgoSpec)
+            request: Pre-built RunRequest (alternative to graph/view/algo)
+            sync_timeout: Wait this long for sync completion (default: 10ms)
+            max_timeout: Maximum total wait time (default: 5 minutes)
+        
+        Returns:
+            Result reference
+        
+        Raises:
+            TimeoutError: If algorithm doesn't complete within max_timeout
+            JobFailedError: If the job fails
+            CanceledError: If the job is canceled
+        """
+        try:
+            # Build request if not provided
+            if request is None:
+                request = gepb.RunRequest(algo=algo)
+                if graph:
+                    request.graph.CopyFrom(gepb.GraphRef(
+                        graph_name=graph.graph_name,
+                        version_id=graph.version_id,
+                    ))
+                if view:
+                    request.view.CopyFrom(gepb.ViewRef(view_id=view.view_id))
+            
+            # Set sync timeout
+            request.sync_timeout.FromTimedelta(timedelta(seconds=sync_timeout))
+            
+            resp = self._engine_stub.Run(
+                request,
+                timeout=self._timeout,
+                metadata=self._get_metadata(),
+            )
+            
+            # Fast path: result available inline
+            if resp.HasField("completed"):
+                if resp.completed.state == gepb.GetJobResponse.SUCCEEDED:
+                    if resp.completed.HasField("result") and resp.completed.result.result_id:
+                        return ResultRef(result_id=resp.completed.result.result_id)
+                    raise GraphEngineError("Job succeeded but no result returned")
+                elif resp.completed.state == gepb.GetJobResponse.FAILED:
+                    raise JobFailedError("Job failed")
+                elif resp.completed.state == gepb.GetJobResponse.CANCELED:
+                    raise CanceledError("Job canceled")
+            
+            # Slow path: poll with graduated backoff and max timeout
+            return self._wait_for_job_with_backoff(
+                JobRef(job_id=resp.job.job_id),
+                max_timeout
+            )
+        except grpc.RpcError as e:
+            raise wrap_grpc_error(e)
+
+    def _wait_for_job_with_backoff(
+        self,
+        job: JobRef,
+        max_timeout: float,
+    ) -> ResultRef:
+        """Poll for job completion with graduated backoff and timeout.
+        
+        Backoff schedule: 10ms, 20ms, then 100ms (cap).
+        """
+        start_time = time.time()
+        poll_count = 0
+        
+        while True:
+            # Check max timeout
+            elapsed = time.time() - start_time
+            if elapsed >= max_timeout:
+                raise GETimeoutError(
+                    f"Algorithm timeout after {max_timeout}s"
+                )
+            
+            # Get backoff delay (cap at last element)
+            idx = min(poll_count, len(self.ASYNC_BACKOFF) - 1)
+            time.sleep(self.ASYNC_BACKOFF[idx])
+            poll_count += 1
+            
+            state, result = self.get_job(job)
+            if state == "SUCCEEDED":
+                if result is None:
+                    raise GraphEngineError("Job succeeded but no result returned")
+                return result
+            elif state == "FAILED":
+                raise JobFailedError(f"Job {job.job_id} failed")
+            elif state == "CANCELED":
+                raise CanceledError(f"Job {job.job_id} was canceled")
+            # PENDING or RUNNING - continue
+
     def wait_for_job(
         self,
         job: JobRef,
-        poll_interval: float = 0.1,
+        poll_interval: float = 0.005,  # 5ms for low-latency algorithm completion
         timeout: Optional[float] = None,
         callback: Optional[Callable[[str], None]] = None,
     ) -> ResultRef:
@@ -1039,7 +1157,7 @@ class GraphEngineClient:
         
         Args:
             job: Job reference
-            poll_interval: Polling interval in seconds
+            poll_interval: Polling interval in seconds (default 5ms for fast algorithms)
             timeout: Optional timeout in seconds
             callback: Optional callback called with state on each poll
             
@@ -1501,10 +1619,10 @@ class AsyncGraphEngineClient:
     async def wait_for_job(
         self,
         job: JobRef,
-        poll_interval: float = 0.1,
+        poll_interval: float = 0.005,  # 5ms for low-latency algorithm completion
         timeout: Optional[float] = None,
     ) -> ResultRef:
-        """Wait for job completion (async)."""
+        """Wait for job completion (async). Default 5ms poll interval for fast algorithms."""
         import asyncio
         start_time = time.time()
         while True:

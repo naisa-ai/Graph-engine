@@ -79,7 +79,7 @@ func (c *Client) ShortestPathWeighted(ctx context.Context, graph *gepb.GraphRef,
 		},
 	}
 
-	result, err := c.RunAndWait(ctx, req)
+	result, err := c.RunAndWait(ctx, req, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -103,7 +103,7 @@ func (c *Client) ShortestPathOnView(ctx context.Context, view *gepb.ViewRef, sou
 		},
 	}
 
-	result, err := c.RunAndWait(ctx, req)
+	result, err := c.RunAndWait(ctx, req, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -126,7 +126,7 @@ func (c *Client) KShortestPaths(ctx context.Context, graph *gepb.GraphRef, sourc
 		},
 	}
 
-	result, err := c.RunAndWait(ctx, req)
+	result, err := c.RunAndWait(ctx, req, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -149,7 +149,7 @@ func (c *Client) KShortestPathsOnView(ctx context.Context, view *gepb.ViewRef, s
 		},
 	}
 
-	result, err := c.RunAndWait(ctx, req)
+	result, err := c.RunAndWait(ctx, req, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -175,7 +175,7 @@ func (c *Client) ComponentsWithMode(ctx context.Context, graph *gepb.GraphRef, m
 		},
 	}
 
-	result, err := c.RunAndWait(ctx, req)
+	result, err := c.RunAndWait(ctx, req, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -202,7 +202,7 @@ func (c *Client) CommunitiesWithParams(ctx context.Context, graph *gepb.GraphRef
 		},
 	}
 
-	result, err := c.RunAndWait(ctx, req)
+	result, err := c.RunAndWait(ctx, req, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -224,7 +224,7 @@ func (c *Client) Distances(ctx context.Context, graph *gepb.GraphRef, sources, t
 		},
 	}
 
-	result, err := c.RunAndWait(ctx, req)
+	result, err := c.RunAndWait(ctx, req, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -252,7 +252,7 @@ func (c *Client) MinCutWeighted(ctx context.Context, graph *gepb.GraphRef, sourc
 		},
 	}
 
-	result, err := c.RunAndWait(ctx, req)
+	result, err := c.RunAndWait(ctx, req, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -274,7 +274,7 @@ func (c *Client) MinCutOnView(ctx context.Context, view *gepb.ViewRef, source, t
 		},
 	}
 
-	result, err := c.RunAndWait(ctx, req)
+	result, err := c.RunAndWait(ctx, req, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -328,7 +328,7 @@ func (c *Client) Corridor(ctx context.Context, graph *gepb.GraphRef, source, tar
 		},
 	}
 
-	result, err := c.RunAndWait(ctx, req)
+	result, err := c.RunAndWait(ctx, req, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -358,7 +358,7 @@ func (c *Client) CorridorOnView(ctx context.Context, view *gepb.ViewRef, source,
 		},
 	}
 
-	result, err := c.RunAndWait(ctx, req)
+	result, err := c.RunAndWait(ctx, req, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -381,7 +381,7 @@ func (c *Client) BFS(ctx context.Context, graph *gepb.GraphRef, source uint64, m
 		},
 	}
 
-	result, err := c.RunAndWait(ctx, req)
+	result, err := c.RunAndWait(ctx, req, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -404,7 +404,7 @@ func (c *Client) Neighborhood(ctx context.Context, graph *gepb.GraphRef, seeds [
 		},
 	}
 
-	result, err := c.RunAndWait(ctx, req)
+	result, err := c.RunAndWait(ctx, req, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -446,7 +446,7 @@ func (c *Client) KCoreWithK(ctx context.Context, graph *gepb.GraphRef, k uint32)
 		},
 	}
 
-	result, err := c.RunAndWait(ctx, req)
+	result, err := c.RunAndWait(ctx, req, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -467,7 +467,7 @@ func (c *Client) KCoreOnView(ctx context.Context, view *gepb.ViewRef, k uint32) 
 		},
 	}
 
-	result, err := c.RunAndWait(ctx, req)
+	result, err := c.RunAndWait(ctx, req, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -495,7 +495,7 @@ func (c *Client) BetweennessWithParams(ctx context.Context, graph *gepb.GraphRef
 		},
 	}
 
-	result, err := c.RunAndWait(ctx, req)
+	result, err := c.RunAndWait(ctx, req, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -518,7 +518,7 @@ func (c *Client) BetweennessOnView(ctx context.Context, view *gepb.ViewRef, samp
 		},
 	}
 
-	result, err := c.RunAndWait(ctx, req)
+	result, err := c.RunAndWait(ctx, req, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -802,10 +802,16 @@ func (c *Client) collectBetweennessResult(ctx context.Context, result *gepb.Resu
 // RunAsync executes an algorithm and returns immediately with a job reference.
 // Use WaitForJob to poll for completion.
 func (c *Client) RunAsync(ctx context.Context, req *gepb.RunRequest) (*gepb.JobRef, error) {
-	return c.Run(ctx, req)
+	job, err := c.Run(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return job, nil
 }
 
 // WaitForJobWithCallback polls for job completion, calling the callback on each poll.
+// Default poll interval is 5ms for low-latency algorithm completion detection.
+// For long-running algorithms with progress callbacks, consider using a longer interval.
 func (c *Client) WaitForJobWithCallback(
 	ctx context.Context,
 	job *gepb.JobRef,
@@ -813,7 +819,7 @@ func (c *Client) WaitForJobWithCallback(
 	callback func(state gepb.GetJobResponse_State),
 ) (*gepb.ResultRef, error) {
 	if pollInterval <= 0 {
-		pollInterval = 100 * time.Millisecond
+		pollInterval = 5 * time.Millisecond // Fast polling for sub-ms algorithm completion
 	}
 
 	ticker := time.NewTicker(pollInterval)

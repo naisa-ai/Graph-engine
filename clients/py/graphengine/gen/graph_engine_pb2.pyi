@@ -352,26 +352,30 @@ class RangeF64(_message.Message):
     def __init__(self, lo: _Optional[float] = ..., hi: _Optional[float] = ...) -> None: ...
 
 class RunRequest(_message.Message):
-    __slots__ = ("graph", "view", "algo", "timeout", "priority", "allow_cache")
+    __slots__ = ("graph", "view", "algo", "timeout", "priority", "allow_cache", "sync_timeout")
     GRAPH_FIELD_NUMBER: _ClassVar[int]
     VIEW_FIELD_NUMBER: _ClassVar[int]
     ALGO_FIELD_NUMBER: _ClassVar[int]
     TIMEOUT_FIELD_NUMBER: _ClassVar[int]
     PRIORITY_FIELD_NUMBER: _ClassVar[int]
     ALLOW_CACHE_FIELD_NUMBER: _ClassVar[int]
+    SYNC_TIMEOUT_FIELD_NUMBER: _ClassVar[int]
     graph: GraphRef
     view: ViewRef
     algo: AlgoSpec
     timeout: _duration_pb2.Duration
     priority: int
     allow_cache: bool
-    def __init__(self, graph: _Optional[_Union[GraphRef, _Mapping]] = ..., view: _Optional[_Union[ViewRef, _Mapping]] = ..., algo: _Optional[_Union[AlgoSpec, _Mapping]] = ..., timeout: _Optional[_Union[datetime.timedelta, _duration_pb2.Duration, _Mapping]] = ..., priority: _Optional[int] = ..., allow_cache: bool = ...) -> None: ...
+    sync_timeout: _duration_pb2.Duration
+    def __init__(self, graph: _Optional[_Union[GraphRef, _Mapping]] = ..., view: _Optional[_Union[ViewRef, _Mapping]] = ..., algo: _Optional[_Union[AlgoSpec, _Mapping]] = ..., timeout: _Optional[_Union[datetime.timedelta, _duration_pb2.Duration, _Mapping]] = ..., priority: _Optional[int] = ..., allow_cache: bool = ..., sync_timeout: _Optional[_Union[datetime.timedelta, _duration_pb2.Duration, _Mapping]] = ...) -> None: ...
 
 class RunResponse(_message.Message):
-    __slots__ = ("job",)
+    __slots__ = ("job", "completed")
     JOB_FIELD_NUMBER: _ClassVar[int]
+    COMPLETED_FIELD_NUMBER: _ClassVar[int]
     job: JobRef
-    def __init__(self, job: _Optional[_Union[JobRef, _Mapping]] = ...) -> None: ...
+    completed: GetJobResponse
+    def __init__(self, job: _Optional[_Union[JobRef, _Mapping]] = ..., completed: _Optional[_Union[GetJobResponse, _Mapping]] = ...) -> None: ...
 
 class AlgoSpec(_message.Message):
     __slots__ = ("components", "communities", "shortest_path", "k_shortest_paths", "distances", "bfs", "neighborhood", "st_mincut", "corridor", "kcore", "betweenness", "closeness", "pagerank")

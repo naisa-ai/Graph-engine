@@ -2442,9 +2442,12 @@ type RunRequest struct {
 	Target isRunRequest_Target `protobuf_oneof:"target"`
 	Algo   *AlgoSpec           `protobuf:"bytes,3,opt,name=algo,proto3" json:"algo,omitempty"`
 	// Hints/controls
-	Timeout       *durationpb.Duration `protobuf:"bytes,10,opt,name=timeout,proto3" json:"timeout,omitempty"`
-	Priority      uint32               `protobuf:"varint,11,opt,name=priority,proto3" json:"priority,omitempty"`
-	AllowCache    bool                 `protobuf:"varint,12,opt,name=allow_cache,json=allowCache,proto3" json:"allow_cache,omitempty"`
+	Timeout    *durationpb.Duration `protobuf:"bytes,10,opt,name=timeout,proto3" json:"timeout,omitempty"`
+	Priority   uint32               `protobuf:"varint,11,opt,name=priority,proto3" json:"priority,omitempty"`
+	AllowCache bool                 `protobuf:"varint,12,opt,name=allow_cache,json=allowCache,proto3" json:"allow_cache,omitempty"`
+	// If algorithm completes within sync_timeout, return result inline.
+	// Default: 10ms. Set to 0 to always return async (job_id only).
+	SyncTimeout   *durationpb.Duration `protobuf:"bytes,20,opt,name=sync_timeout,json=syncTimeout,proto3" json:"sync_timeout,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2532,6 +2535,13 @@ func (x *RunRequest) GetAllowCache() bool {
 	return false
 }
 
+func (x *RunRequest) GetSyncTimeout() *durationpb.Duration {
+	if x != nil {
+		return x.SyncTimeout
+	}
+	return nil
+}
+
 type isRunRequest_Target interface {
 	isRunRequest_Target()
 }
@@ -2549,8 +2559,11 @@ func (*RunRequest_Graph) isRunRequest_Target() {}
 func (*RunRequest_View) isRunRequest_Target() {}
 
 type RunResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Job           *JobRef                `protobuf:"bytes,1,opt,name=job,proto3" json:"job,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Job   *JobRef                `protobuf:"bytes,1,opt,name=job,proto3" json:"job,omitempty"`
+	// If algorithm completed within sync_timeout, contains the result.
+	// If nil, client must poll using GetJob().
+	Completed     *GetJobResponse `protobuf:"bytes,2,opt,name=completed,proto3" json:"completed,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2588,6 +2601,13 @@ func (*RunResponse) Descriptor() ([]byte, []int) {
 func (x *RunResponse) GetJob() *JobRef {
 	if x != nil {
 		return x.Job
+	}
+	return nil
+}
+
+func (x *RunResponse) GetCompleted() *GetJobResponse {
+	if x != nil {
+		return x.Completed
 	}
 	return nil
 }
@@ -5307,7 +5327,7 @@ const file_graphengine_v1_graph_engine_proto_rawDesc = "" +
 	"\x02hi\x18\x02 \x01(\rR\x02hi\"*\n" +
 	"\bRangeF64\x12\x0e\n" +
 	"\x02lo\x18\x01 \x01(\x01R\x02lo\x12\x0e\n" +
-	"\x02hi\x18\x02 \x01(\x01R\x02hi\"\x97\x02\n" +
+	"\x02hi\x18\x02 \x01(\x01R\x02hi\"\xd5\x02\n" +
 	"\n" +
 	"RunRequest\x120\n" +
 	"\x05graph\x18\x01 \x01(\v2\x18.graphengine.v1.GraphRefH\x00R\x05graph\x12-\n" +
@@ -5317,10 +5337,12 @@ const file_graphengine_v1_graph_engine_proto_rawDesc = "" +
 	" \x01(\v2\x19.google.protobuf.DurationR\atimeout\x12\x1a\n" +
 	"\bpriority\x18\v \x01(\rR\bpriority\x12\x1f\n" +
 	"\vallow_cache\x18\f \x01(\bR\n" +
-	"allowCacheB\b\n" +
-	"\x06target\"7\n" +
+	"allowCache\x12<\n" +
+	"\fsync_timeout\x18\x14 \x01(\v2\x19.google.protobuf.DurationR\vsyncTimeoutB\b\n" +
+	"\x06target\"u\n" +
 	"\vRunResponse\x12(\n" +
-	"\x03job\x18\x01 \x01(\v2\x16.graphengine.v1.JobRefR\x03job\"\xd7\x06\n" +
+	"\x03job\x18\x01 \x01(\v2\x16.graphengine.v1.JobRefR\x03job\x12<\n" +
+	"\tcompleted\x18\x02 \x01(\v2\x1e.graphengine.v1.GetJobResponseR\tcompleted\"\xd7\x06\n" +
 	"\bAlgoSpec\x12@\n" +
 	"\n" +
 	"components\x18\x01 \x01(\v2\x1e.graphengine.v1.ComponentsSpecH\x00R\n" +
@@ -5706,76 +5728,78 @@ var file_graphengine_v1_graph_engine_proto_depIdxs = []int32{
 	10, // 30: graphengine.v1.RunRequest.view:type_name -> graphengine.v1.ViewRef
 	40, // 31: graphengine.v1.RunRequest.algo:type_name -> graphengine.v1.AlgoSpec
 	78, // 32: graphengine.v1.RunRequest.timeout:type_name -> google.protobuf.Duration
-	12, // 33: graphengine.v1.RunResponse.job:type_name -> graphengine.v1.JobRef
-	41, // 34: graphengine.v1.AlgoSpec.components:type_name -> graphengine.v1.ComponentsSpec
-	42, // 35: graphengine.v1.AlgoSpec.communities:type_name -> graphengine.v1.CommunitiesSpec
-	43, // 36: graphengine.v1.AlgoSpec.shortest_path:type_name -> graphengine.v1.ShortestPathSpec
-	47, // 37: graphengine.v1.AlgoSpec.k_shortest_paths:type_name -> graphengine.v1.KShortestPathsSpec
-	44, // 38: graphengine.v1.AlgoSpec.distances:type_name -> graphengine.v1.DistancesSpec
-	45, // 39: graphengine.v1.AlgoSpec.bfs:type_name -> graphengine.v1.BFSSpec
-	46, // 40: graphengine.v1.AlgoSpec.neighborhood:type_name -> graphengine.v1.NeighborhoodQuerySpec
-	48, // 41: graphengine.v1.AlgoSpec.st_mincut:type_name -> graphengine.v1.STMinCutSpec
-	49, // 42: graphengine.v1.AlgoSpec.corridor:type_name -> graphengine.v1.CorridorSpec
-	50, // 43: graphengine.v1.AlgoSpec.kcore:type_name -> graphengine.v1.KCoreSpec
-	51, // 44: graphengine.v1.AlgoSpec.betweenness:type_name -> graphengine.v1.BetweennessSpec
-	52, // 45: graphengine.v1.AlgoSpec.closeness:type_name -> graphengine.v1.ClosenessSpec
-	53, // 46: graphengine.v1.AlgoSpec.pagerank:type_name -> graphengine.v1.PageRankSpec
-	4,  // 47: graphengine.v1.ComponentsSpec.mode:type_name -> graphengine.v1.ComponentsSpec.Mode
-	5,  // 48: graphengine.v1.CommunitiesSpec.method:type_name -> graphengine.v1.CommunitiesSpec.Method
-	2,  // 49: graphengine.v1.BFSSpec.mode:type_name -> graphengine.v1.NeighborhoodSpec.Mode
-	2,  // 50: graphengine.v1.NeighborhoodQuerySpec.mode:type_name -> graphengine.v1.NeighborhoodSpec.Mode
-	78, // 51: graphengine.v1.KShortestPathsSpec.per_path_timeout:type_name -> google.protobuf.Duration
-	6,  // 52: graphengine.v1.CorridorSpec.method:type_name -> graphengine.v1.CorridorSpec.Method
-	7,  // 53: graphengine.v1.ClosenessSpec.mode:type_name -> graphengine.v1.ClosenessSpec.Mode
-	12, // 54: graphengine.v1.GetJobRequest.job:type_name -> graphengine.v1.JobRef
-	8,  // 55: graphengine.v1.GetJobResponse.state:type_name -> graphengine.v1.GetJobResponse.State
-	79, // 56: graphengine.v1.GetJobResponse.started_at:type_name -> google.protobuf.Timestamp
-	79, // 57: graphengine.v1.GetJobResponse.finished_at:type_name -> google.protobuf.Timestamp
-	11, // 58: graphengine.v1.GetJobResponse.result:type_name -> graphengine.v1.ResultRef
-	19, // 59: graphengine.v1.GetJobResponse.status:type_name -> graphengine.v1.Status
-	12, // 60: graphengine.v1.CancelJobRequest.job:type_name -> graphengine.v1.JobRef
-	11, // 61: graphengine.v1.GetResultRequest.result:type_name -> graphengine.v1.ResultRef
-	60, // 62: graphengine.v1.ResultChunk.header:type_name -> graphengine.v1.ResultHeader
-	61, // 63: graphengine.v1.ResultChunk.u32:type_name -> graphengine.v1.U32Buffer
-	62, // 64: graphengine.v1.ResultChunk.u64:type_name -> graphengine.v1.U64Buffer
-	63, // 65: graphengine.v1.ResultChunk.f64:type_name -> graphengine.v1.F64Buffer
-	64, // 66: graphengine.v1.ResultChunk.bytes:type_name -> graphengine.v1.BytesBuffer
-	65, // 67: graphengine.v1.ResultChunk.shortest_path:type_name -> graphengine.v1.ShortestPathResult
-	66, // 68: graphengine.v1.ResultChunk.st_mincut:type_name -> graphengine.v1.STMinCutResult
-	67, // 69: graphengine.v1.ResultChunk.corridor:type_name -> graphengine.v1.CorridorResult
-	68, // 70: graphengine.v1.ResultChunk.kcore:type_name -> graphengine.v1.KCoreResult
-	69, // 71: graphengine.v1.ResultChunk.betweenness:type_name -> graphengine.v1.BetweennessResult
-	72, // 72: graphengine.v1.ResultChunk.components:type_name -> graphengine.v1.ComponentsResult
-	70, // 73: graphengine.v1.ResultChunk.closeness:type_name -> graphengine.v1.ClosenessResult
-	71, // 74: graphengine.v1.ResultChunk.pagerank:type_name -> graphengine.v1.PageRankResult
-	76, // 75: graphengine.v1.ResultHeader.meta:type_name -> graphengine.v1.ResultHeader.MetaEntry
-	10, // 76: graphengine.v1.CorridorResult.view:type_name -> graphengine.v1.ViewRef
-	77, // 77: graphengine.v1.CorridorResult.meta:type_name -> graphengine.v1.CorridorResult.MetaEntry
-	10, // 78: graphengine.v1.ReleaseRequest.view:type_name -> graphengine.v1.ViewRef
-	11, // 79: graphengine.v1.ReleaseRequest.result:type_name -> graphengine.v1.ResultRef
-	13, // 80: graphengine.v1.GraphEngine.BeginBuild:input_type -> graphengine.v1.BeginBuildRequest
-	15, // 81: graphengine.v1.GraphEngine.Upload:input_type -> graphengine.v1.UploadRequest
-	17, // 82: graphengine.v1.GraphEngine.PublishBuild:input_type -> graphengine.v1.PublishBuildRequest
-	26, // 83: graphengine.v1.GraphEngine.CreateView:input_type -> graphengine.v1.CreateViewRequest
-	38, // 84: graphengine.v1.GraphEngine.Run:input_type -> graphengine.v1.RunRequest
-	54, // 85: graphengine.v1.GraphEngine.GetJob:input_type -> graphengine.v1.GetJobRequest
-	56, // 86: graphengine.v1.GraphEngine.CancelJob:input_type -> graphengine.v1.CancelJobRequest
-	58, // 87: graphengine.v1.GraphEngine.GetResult:input_type -> graphengine.v1.GetResultRequest
-	73, // 88: graphengine.v1.GraphEngine.Release:input_type -> graphengine.v1.ReleaseRequest
-	14, // 89: graphengine.v1.GraphEngine.BeginBuild:output_type -> graphengine.v1.BeginBuildResponse
-	16, // 90: graphengine.v1.GraphEngine.Upload:output_type -> graphengine.v1.UploadResponse
-	18, // 91: graphengine.v1.GraphEngine.PublishBuild:output_type -> graphengine.v1.PublishBuildResponse
-	27, // 92: graphengine.v1.GraphEngine.CreateView:output_type -> graphengine.v1.CreateViewResponse
-	39, // 93: graphengine.v1.GraphEngine.Run:output_type -> graphengine.v1.RunResponse
-	55, // 94: graphengine.v1.GraphEngine.GetJob:output_type -> graphengine.v1.GetJobResponse
-	57, // 95: graphengine.v1.GraphEngine.CancelJob:output_type -> graphengine.v1.CancelJobResponse
-	59, // 96: graphengine.v1.GraphEngine.GetResult:output_type -> graphengine.v1.ResultChunk
-	74, // 97: graphengine.v1.GraphEngine.Release:output_type -> graphengine.v1.ReleaseResponse
-	89, // [89:98] is the sub-list for method output_type
-	80, // [80:89] is the sub-list for method input_type
-	80, // [80:80] is the sub-list for extension type_name
-	80, // [80:80] is the sub-list for extension extendee
-	0,  // [0:80] is the sub-list for field type_name
+	78, // 33: graphengine.v1.RunRequest.sync_timeout:type_name -> google.protobuf.Duration
+	12, // 34: graphengine.v1.RunResponse.job:type_name -> graphengine.v1.JobRef
+	55, // 35: graphengine.v1.RunResponse.completed:type_name -> graphengine.v1.GetJobResponse
+	41, // 36: graphengine.v1.AlgoSpec.components:type_name -> graphengine.v1.ComponentsSpec
+	42, // 37: graphengine.v1.AlgoSpec.communities:type_name -> graphengine.v1.CommunitiesSpec
+	43, // 38: graphengine.v1.AlgoSpec.shortest_path:type_name -> graphengine.v1.ShortestPathSpec
+	47, // 39: graphengine.v1.AlgoSpec.k_shortest_paths:type_name -> graphengine.v1.KShortestPathsSpec
+	44, // 40: graphengine.v1.AlgoSpec.distances:type_name -> graphengine.v1.DistancesSpec
+	45, // 41: graphengine.v1.AlgoSpec.bfs:type_name -> graphengine.v1.BFSSpec
+	46, // 42: graphengine.v1.AlgoSpec.neighborhood:type_name -> graphengine.v1.NeighborhoodQuerySpec
+	48, // 43: graphengine.v1.AlgoSpec.st_mincut:type_name -> graphengine.v1.STMinCutSpec
+	49, // 44: graphengine.v1.AlgoSpec.corridor:type_name -> graphengine.v1.CorridorSpec
+	50, // 45: graphengine.v1.AlgoSpec.kcore:type_name -> graphengine.v1.KCoreSpec
+	51, // 46: graphengine.v1.AlgoSpec.betweenness:type_name -> graphengine.v1.BetweennessSpec
+	52, // 47: graphengine.v1.AlgoSpec.closeness:type_name -> graphengine.v1.ClosenessSpec
+	53, // 48: graphengine.v1.AlgoSpec.pagerank:type_name -> graphengine.v1.PageRankSpec
+	4,  // 49: graphengine.v1.ComponentsSpec.mode:type_name -> graphengine.v1.ComponentsSpec.Mode
+	5,  // 50: graphengine.v1.CommunitiesSpec.method:type_name -> graphengine.v1.CommunitiesSpec.Method
+	2,  // 51: graphengine.v1.BFSSpec.mode:type_name -> graphengine.v1.NeighborhoodSpec.Mode
+	2,  // 52: graphengine.v1.NeighborhoodQuerySpec.mode:type_name -> graphengine.v1.NeighborhoodSpec.Mode
+	78, // 53: graphengine.v1.KShortestPathsSpec.per_path_timeout:type_name -> google.protobuf.Duration
+	6,  // 54: graphengine.v1.CorridorSpec.method:type_name -> graphengine.v1.CorridorSpec.Method
+	7,  // 55: graphengine.v1.ClosenessSpec.mode:type_name -> graphengine.v1.ClosenessSpec.Mode
+	12, // 56: graphengine.v1.GetJobRequest.job:type_name -> graphengine.v1.JobRef
+	8,  // 57: graphengine.v1.GetJobResponse.state:type_name -> graphengine.v1.GetJobResponse.State
+	79, // 58: graphengine.v1.GetJobResponse.started_at:type_name -> google.protobuf.Timestamp
+	79, // 59: graphengine.v1.GetJobResponse.finished_at:type_name -> google.protobuf.Timestamp
+	11, // 60: graphengine.v1.GetJobResponse.result:type_name -> graphengine.v1.ResultRef
+	19, // 61: graphengine.v1.GetJobResponse.status:type_name -> graphengine.v1.Status
+	12, // 62: graphengine.v1.CancelJobRequest.job:type_name -> graphengine.v1.JobRef
+	11, // 63: graphengine.v1.GetResultRequest.result:type_name -> graphengine.v1.ResultRef
+	60, // 64: graphengine.v1.ResultChunk.header:type_name -> graphengine.v1.ResultHeader
+	61, // 65: graphengine.v1.ResultChunk.u32:type_name -> graphengine.v1.U32Buffer
+	62, // 66: graphengine.v1.ResultChunk.u64:type_name -> graphengine.v1.U64Buffer
+	63, // 67: graphengine.v1.ResultChunk.f64:type_name -> graphengine.v1.F64Buffer
+	64, // 68: graphengine.v1.ResultChunk.bytes:type_name -> graphengine.v1.BytesBuffer
+	65, // 69: graphengine.v1.ResultChunk.shortest_path:type_name -> graphengine.v1.ShortestPathResult
+	66, // 70: graphengine.v1.ResultChunk.st_mincut:type_name -> graphengine.v1.STMinCutResult
+	67, // 71: graphengine.v1.ResultChunk.corridor:type_name -> graphengine.v1.CorridorResult
+	68, // 72: graphengine.v1.ResultChunk.kcore:type_name -> graphengine.v1.KCoreResult
+	69, // 73: graphengine.v1.ResultChunk.betweenness:type_name -> graphengine.v1.BetweennessResult
+	72, // 74: graphengine.v1.ResultChunk.components:type_name -> graphengine.v1.ComponentsResult
+	70, // 75: graphengine.v1.ResultChunk.closeness:type_name -> graphengine.v1.ClosenessResult
+	71, // 76: graphengine.v1.ResultChunk.pagerank:type_name -> graphengine.v1.PageRankResult
+	76, // 77: graphengine.v1.ResultHeader.meta:type_name -> graphengine.v1.ResultHeader.MetaEntry
+	10, // 78: graphengine.v1.CorridorResult.view:type_name -> graphengine.v1.ViewRef
+	77, // 79: graphengine.v1.CorridorResult.meta:type_name -> graphengine.v1.CorridorResult.MetaEntry
+	10, // 80: graphengine.v1.ReleaseRequest.view:type_name -> graphengine.v1.ViewRef
+	11, // 81: graphengine.v1.ReleaseRequest.result:type_name -> graphengine.v1.ResultRef
+	13, // 82: graphengine.v1.GraphEngine.BeginBuild:input_type -> graphengine.v1.BeginBuildRequest
+	15, // 83: graphengine.v1.GraphEngine.Upload:input_type -> graphengine.v1.UploadRequest
+	17, // 84: graphengine.v1.GraphEngine.PublishBuild:input_type -> graphengine.v1.PublishBuildRequest
+	26, // 85: graphengine.v1.GraphEngine.CreateView:input_type -> graphengine.v1.CreateViewRequest
+	38, // 86: graphengine.v1.GraphEngine.Run:input_type -> graphengine.v1.RunRequest
+	54, // 87: graphengine.v1.GraphEngine.GetJob:input_type -> graphengine.v1.GetJobRequest
+	56, // 88: graphengine.v1.GraphEngine.CancelJob:input_type -> graphengine.v1.CancelJobRequest
+	58, // 89: graphengine.v1.GraphEngine.GetResult:input_type -> graphengine.v1.GetResultRequest
+	73, // 90: graphengine.v1.GraphEngine.Release:input_type -> graphengine.v1.ReleaseRequest
+	14, // 91: graphengine.v1.GraphEngine.BeginBuild:output_type -> graphengine.v1.BeginBuildResponse
+	16, // 92: graphengine.v1.GraphEngine.Upload:output_type -> graphengine.v1.UploadResponse
+	18, // 93: graphengine.v1.GraphEngine.PublishBuild:output_type -> graphengine.v1.PublishBuildResponse
+	27, // 94: graphengine.v1.GraphEngine.CreateView:output_type -> graphengine.v1.CreateViewResponse
+	39, // 95: graphengine.v1.GraphEngine.Run:output_type -> graphengine.v1.RunResponse
+	55, // 96: graphengine.v1.GraphEngine.GetJob:output_type -> graphengine.v1.GetJobResponse
+	57, // 97: graphengine.v1.GraphEngine.CancelJob:output_type -> graphengine.v1.CancelJobResponse
+	59, // 98: graphengine.v1.GraphEngine.GetResult:output_type -> graphengine.v1.ResultChunk
+	74, // 99: graphengine.v1.GraphEngine.Release:output_type -> graphengine.v1.ReleaseResponse
+	91, // [91:100] is the sub-list for method output_type
+	82, // [82:91] is the sub-list for method input_type
+	82, // [82:82] is the sub-list for extension type_name
+	82, // [82:82] is the sub-list for extension extendee
+	0,  // [0:82] is the sub-list for field type_name
 }
 
 func init() { file_graphengine_v1_graph_engine_proto_init() }
