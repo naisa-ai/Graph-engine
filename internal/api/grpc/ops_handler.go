@@ -371,6 +371,24 @@ func (h *GraphEngineOpsHandler) exportView(viewRef *gepb.ViewRef, exporter *serv
 	return nil
 }
 
+// DeleteGraph deletes a graph by name.
+func (h *GraphEngineOpsHandler) DeleteGraph(ctx context.Context, req *gepb.DeleteGraphRequest) (*gepb.DeleteGraphResponse, error) {
+	graphName := req.GetGraphName()
+	if graphName == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "graph_name is required")
+	}
+
+	h.logger.Info("DeleteGraph called", "graph_name", graphName)
+
+	deleted := h.graphRegistry.DeleteGraph(graphName)
+
+	h.logger.Info("DeleteGraph completed", "graph_name", graphName, "deleted", deleted)
+
+	return &gepb.DeleteGraphResponse{
+		Deleted: deleted,
+	}, nil
+}
+
 // Helper function to convert int to string
 func intToString(n int) string {
 	return fmt.Sprintf("%d", n)

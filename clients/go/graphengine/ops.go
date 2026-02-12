@@ -214,6 +214,22 @@ func (c *Client) TraceJob(ctx context.Context, job *gepb.JobRef) ([]*TraceSpan, 
 	return spans, nil
 }
 
+// DeleteGraph deletes a graph by name.
+// Returns true if the graph existed and was deleted, false if it didn't exist.
+func (c *Client) DeleteGraph(ctx context.Context, graphName string) (bool, error) {
+	ctx, cancel := c.context(ctx)
+	defer cancel()
+
+	resp, err := c.ops.DeleteGraph(ctx, &gepb.DeleteGraphRequest{
+		GraphName: graphName,
+	})
+	if err != nil {
+		return false, wrapError(err, "DeleteGraph")
+	}
+
+	return resp.Deleted, nil
+}
+
 // ExportFormat represents the export format.
 type ExportFormat int
 

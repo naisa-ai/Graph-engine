@@ -928,6 +928,94 @@ func (x *ExportChunk) GetData() []byte {
 	return nil
 }
 
+type DeleteGraphRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	GraphName     string                 `protobuf:"bytes,1,opt,name=graph_name,json=graphName,proto3" json:"graph_name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteGraphRequest) Reset() {
+	*x = DeleteGraphRequest{}
+	mi := &file_graphengine_v1_graph_engine_ops_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteGraphRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteGraphRequest) ProtoMessage() {}
+
+func (x *DeleteGraphRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_graphengine_v1_graph_engine_ops_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteGraphRequest.ProtoReflect.Descriptor instead.
+func (*DeleteGraphRequest) Descriptor() ([]byte, []int) {
+	return file_graphengine_v1_graph_engine_ops_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *DeleteGraphRequest) GetGraphName() string {
+	if x != nil {
+		return x.GraphName
+	}
+	return ""
+}
+
+type DeleteGraphResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Deleted       bool                   `protobuf:"varint,1,opt,name=deleted,proto3" json:"deleted,omitempty"` // true if graph existed and was deleted
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteGraphResponse) Reset() {
+	*x = DeleteGraphResponse{}
+	mi := &file_graphengine_v1_graph_engine_ops_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteGraphResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteGraphResponse) ProtoMessage() {}
+
+func (x *DeleteGraphResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_graphengine_v1_graph_engine_ops_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteGraphResponse.ProtoReflect.Descriptor instead.
+func (*DeleteGraphResponse) Descriptor() ([]byte, []int) {
+	return file_graphengine_v1_graph_engine_ops_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *DeleteGraphResponse) GetDeleted() bool {
+	if x != nil {
+		return x.Deleted
+	}
+	return false
+}
+
 var File_graphengine_v1_graph_engine_ops_proto protoreflect.FileDescriptor
 
 const file_graphengine_v1_graph_engine_ops_proto_rawDesc = "" +
@@ -998,7 +1086,12 @@ const file_graphengine_v1_graph_engine_ops_proto_rawDesc = "" +
 	"\x03CSV\x10\x01B\b\n" +
 	"\x06target\"!\n" +
 	"\vExportChunk\x12\x12\n" +
-	"\x04data\x18\x01 \x01(\fR\x04data2\xe6\x04\n" +
+	"\x04data\x18\x01 \x01(\fR\x04data\"3\n" +
+	"\x12DeleteGraphRequest\x12\x1d\n" +
+	"\n" +
+	"graph_name\x18\x01 \x01(\tR\tgraphName\"/\n" +
+	"\x13DeleteGraphResponse\x12\x18\n" +
+	"\adeleted\x18\x01 \x01(\bR\adeleted2\xbe\x05\n" +
 	"\x0eGraphEngineOps\x12G\n" +
 	"\x06Health\x12\x1d.graphengine.v1.HealthRequest\x1a\x1e.graphengine.v1.HealthResponse\x12S\n" +
 	"\n" +
@@ -1008,7 +1101,8 @@ const file_graphengine_v1_graph_engine_ops_proto_rawDesc = "" +
 	"CacheStats\x12!.graphengine.v1.CacheStatsRequest\x1a\".graphengine.v1.CacheStatsResponse\x12\\\n" +
 	"\rValidateGraph\x12$.graphengine.v1.ValidateGraphRequest\x1a%.graphengine.v1.ValidateGraphResponse\x12M\n" +
 	"\bTraceJob\x12\x1f.graphengine.v1.TraceJobRequest\x1a .graphengine.v1.TraceJobResponse\x12V\n" +
-	"\x0eExportSubgraph\x12%.graphengine.v1.ExportSubgraphRequest\x1a\x1b.graphengine.v1.ExportChunk0\x01B:Z8github.com/naisa-ai/graph-engine/gen/graphengine/v1;gepbb\x06proto3"
+	"\x0eExportSubgraph\x12%.graphengine.v1.ExportSubgraphRequest\x1a\x1b.graphengine.v1.ExportChunk0\x01\x12V\n" +
+	"\vDeleteGraph\x12\".graphengine.v1.DeleteGraphRequest\x1a#.graphengine.v1.DeleteGraphResponseB:Z8github.com/naisa-ai/graph-engine/gen/graphengine/v1;gepbb\x06proto3"
 
 var (
 	file_graphengine_v1_graph_engine_ops_proto_rawDescOnce sync.Once
@@ -1023,7 +1117,7 @@ func file_graphengine_v1_graph_engine_ops_proto_rawDescGZIP() []byte {
 }
 
 var file_graphengine_v1_graph_engine_ops_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_graphengine_v1_graph_engine_ops_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
+var file_graphengine_v1_graph_engine_ops_proto_msgTypes = make([]protoimpl.MessageInfo, 22)
 var file_graphengine_v1_graph_engine_ops_proto_goTypes = []any{
 	(ExportSubgraphRequest_Format)(0), // 0: graphengine.v1.ExportSubgraphRequest.Format
 	(*HealthRequest)(nil),             // 1: graphengine.v1.HealthRequest
@@ -1042,35 +1136,37 @@ var file_graphengine_v1_graph_engine_ops_proto_goTypes = []any{
 	(*TraceSpan)(nil),                 // 14: graphengine.v1.TraceSpan
 	(*ExportSubgraphRequest)(nil),     // 15: graphengine.v1.ExportSubgraphRequest
 	(*ExportChunk)(nil),               // 16: graphengine.v1.ExportChunk
-	nil,                               // 17: graphengine.v1.HealthResponse.MetaEntry
-	nil,                               // 18: graphengine.v1.DescribeGraphResponse.LabelsEntry
-	nil,                               // 19: graphengine.v1.ValidateGraphResponse.MetricsEntry
-	nil,                               // 20: graphengine.v1.TraceSpan.TagsEntry
-	(*timestamppb.Timestamp)(nil),     // 21: google.protobuf.Timestamp
-	(*GraphRef)(nil),                  // 22: graphengine.v1.GraphRef
-	(*Schema)(nil),                    // 23: graphengine.v1.Schema
-	(*Status)(nil),                    // 24: graphengine.v1.Status
-	(*JobRef)(nil),                    // 25: graphengine.v1.JobRef
-	(*durationpb.Duration)(nil),       // 26: google.protobuf.Duration
-	(*ViewRef)(nil),                   // 27: graphengine.v1.ViewRef
+	(*DeleteGraphRequest)(nil),        // 17: graphengine.v1.DeleteGraphRequest
+	(*DeleteGraphResponse)(nil),       // 18: graphengine.v1.DeleteGraphResponse
+	nil,                               // 19: graphengine.v1.HealthResponse.MetaEntry
+	nil,                               // 20: graphengine.v1.DescribeGraphResponse.LabelsEntry
+	nil,                               // 21: graphengine.v1.ValidateGraphResponse.MetricsEntry
+	nil,                               // 22: graphengine.v1.TraceSpan.TagsEntry
+	(*timestamppb.Timestamp)(nil),     // 23: google.protobuf.Timestamp
+	(*GraphRef)(nil),                  // 24: graphengine.v1.GraphRef
+	(*Schema)(nil),                    // 25: graphengine.v1.Schema
+	(*Status)(nil),                    // 26: graphengine.v1.Status
+	(*JobRef)(nil),                    // 27: graphengine.v1.JobRef
+	(*durationpb.Duration)(nil),       // 28: google.protobuf.Duration
+	(*ViewRef)(nil),                   // 29: graphengine.v1.ViewRef
 }
 var file_graphengine_v1_graph_engine_ops_proto_depIdxs = []int32{
-	17, // 0: graphengine.v1.HealthResponse.meta:type_name -> graphengine.v1.HealthResponse.MetaEntry
+	19, // 0: graphengine.v1.HealthResponse.meta:type_name -> graphengine.v1.HealthResponse.MetaEntry
 	5,  // 1: graphengine.v1.ListGraphsResponse.graphs:type_name -> graphengine.v1.GraphSummary
-	21, // 2: graphengine.v1.GraphSummary.published_at:type_name -> google.protobuf.Timestamp
-	22, // 3: graphengine.v1.DescribeGraphRequest.graph:type_name -> graphengine.v1.GraphRef
+	23, // 2: graphengine.v1.GraphSummary.published_at:type_name -> google.protobuf.Timestamp
+	24, // 3: graphengine.v1.DescribeGraphRequest.graph:type_name -> graphengine.v1.GraphRef
 	5,  // 4: graphengine.v1.DescribeGraphResponse.summary:type_name -> graphengine.v1.GraphSummary
-	23, // 5: graphengine.v1.DescribeGraphResponse.schema:type_name -> graphengine.v1.Schema
-	18, // 6: graphengine.v1.DescribeGraphResponse.labels:type_name -> graphengine.v1.DescribeGraphResponse.LabelsEntry
-	22, // 7: graphengine.v1.ValidateGraphRequest.graph:type_name -> graphengine.v1.GraphRef
-	24, // 8: graphengine.v1.ValidateGraphResponse.status:type_name -> graphengine.v1.Status
-	19, // 9: graphengine.v1.ValidateGraphResponse.metrics:type_name -> graphengine.v1.ValidateGraphResponse.MetricsEntry
-	25, // 10: graphengine.v1.TraceJobRequest.job:type_name -> graphengine.v1.JobRef
+	25, // 5: graphengine.v1.DescribeGraphResponse.schema:type_name -> graphengine.v1.Schema
+	20, // 6: graphengine.v1.DescribeGraphResponse.labels:type_name -> graphengine.v1.DescribeGraphResponse.LabelsEntry
+	24, // 7: graphengine.v1.ValidateGraphRequest.graph:type_name -> graphengine.v1.GraphRef
+	26, // 8: graphengine.v1.ValidateGraphResponse.status:type_name -> graphengine.v1.Status
+	21, // 9: graphengine.v1.ValidateGraphResponse.metrics:type_name -> graphengine.v1.ValidateGraphResponse.MetricsEntry
+	27, // 10: graphengine.v1.TraceJobRequest.job:type_name -> graphengine.v1.JobRef
 	14, // 11: graphengine.v1.TraceJobResponse.spans:type_name -> graphengine.v1.TraceSpan
-	26, // 12: graphengine.v1.TraceSpan.duration:type_name -> google.protobuf.Duration
-	20, // 13: graphengine.v1.TraceSpan.tags:type_name -> graphengine.v1.TraceSpan.TagsEntry
-	22, // 14: graphengine.v1.ExportSubgraphRequest.graph:type_name -> graphengine.v1.GraphRef
-	27, // 15: graphengine.v1.ExportSubgraphRequest.view:type_name -> graphengine.v1.ViewRef
+	28, // 12: graphengine.v1.TraceSpan.duration:type_name -> google.protobuf.Duration
+	22, // 13: graphengine.v1.TraceSpan.tags:type_name -> graphengine.v1.TraceSpan.TagsEntry
+	24, // 14: graphengine.v1.ExportSubgraphRequest.graph:type_name -> graphengine.v1.GraphRef
+	29, // 15: graphengine.v1.ExportSubgraphRequest.view:type_name -> graphengine.v1.ViewRef
 	0,  // 16: graphengine.v1.ExportSubgraphRequest.format:type_name -> graphengine.v1.ExportSubgraphRequest.Format
 	1,  // 17: graphengine.v1.GraphEngineOps.Health:input_type -> graphengine.v1.HealthRequest
 	3,  // 18: graphengine.v1.GraphEngineOps.ListGraphs:input_type -> graphengine.v1.ListGraphsRequest
@@ -1079,15 +1175,17 @@ var file_graphengine_v1_graph_engine_ops_proto_depIdxs = []int32{
 	10, // 21: graphengine.v1.GraphEngineOps.ValidateGraph:input_type -> graphengine.v1.ValidateGraphRequest
 	12, // 22: graphengine.v1.GraphEngineOps.TraceJob:input_type -> graphengine.v1.TraceJobRequest
 	15, // 23: graphengine.v1.GraphEngineOps.ExportSubgraph:input_type -> graphengine.v1.ExportSubgraphRequest
-	2,  // 24: graphengine.v1.GraphEngineOps.Health:output_type -> graphengine.v1.HealthResponse
-	4,  // 25: graphengine.v1.GraphEngineOps.ListGraphs:output_type -> graphengine.v1.ListGraphsResponse
-	7,  // 26: graphengine.v1.GraphEngineOps.DescribeGraph:output_type -> graphengine.v1.DescribeGraphResponse
-	9,  // 27: graphengine.v1.GraphEngineOps.CacheStats:output_type -> graphengine.v1.CacheStatsResponse
-	11, // 28: graphengine.v1.GraphEngineOps.ValidateGraph:output_type -> graphengine.v1.ValidateGraphResponse
-	13, // 29: graphengine.v1.GraphEngineOps.TraceJob:output_type -> graphengine.v1.TraceJobResponse
-	16, // 30: graphengine.v1.GraphEngineOps.ExportSubgraph:output_type -> graphengine.v1.ExportChunk
-	24, // [24:31] is the sub-list for method output_type
-	17, // [17:24] is the sub-list for method input_type
+	17, // 24: graphengine.v1.GraphEngineOps.DeleteGraph:input_type -> graphengine.v1.DeleteGraphRequest
+	2,  // 25: graphengine.v1.GraphEngineOps.Health:output_type -> graphengine.v1.HealthResponse
+	4,  // 26: graphengine.v1.GraphEngineOps.ListGraphs:output_type -> graphengine.v1.ListGraphsResponse
+	7,  // 27: graphengine.v1.GraphEngineOps.DescribeGraph:output_type -> graphengine.v1.DescribeGraphResponse
+	9,  // 28: graphengine.v1.GraphEngineOps.CacheStats:output_type -> graphengine.v1.CacheStatsResponse
+	11, // 29: graphengine.v1.GraphEngineOps.ValidateGraph:output_type -> graphengine.v1.ValidateGraphResponse
+	13, // 30: graphengine.v1.GraphEngineOps.TraceJob:output_type -> graphengine.v1.TraceJobResponse
+	16, // 31: graphengine.v1.GraphEngineOps.ExportSubgraph:output_type -> graphengine.v1.ExportChunk
+	18, // 32: graphengine.v1.GraphEngineOps.DeleteGraph:output_type -> graphengine.v1.DeleteGraphResponse
+	25, // [25:33] is the sub-list for method output_type
+	17, // [17:25] is the sub-list for method input_type
 	17, // [17:17] is the sub-list for extension type_name
 	17, // [17:17] is the sub-list for extension extendee
 	0,  // [0:17] is the sub-list for field type_name
@@ -1109,7 +1207,7 @@ func file_graphengine_v1_graph_engine_ops_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_graphengine_v1_graph_engine_ops_proto_rawDesc), len(file_graphengine_v1_graph_engine_ops_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   20,
+			NumMessages:   22,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

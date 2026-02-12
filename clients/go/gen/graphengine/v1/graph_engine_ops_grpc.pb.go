@@ -29,6 +29,7 @@ const (
 	GraphEngineOps_ValidateGraph_FullMethodName  = "/graphengine.v1.GraphEngineOps/ValidateGraph"
 	GraphEngineOps_TraceJob_FullMethodName       = "/graphengine.v1.GraphEngineOps/TraceJob"
 	GraphEngineOps_ExportSubgraph_FullMethodName = "/graphengine.v1.GraphEngineOps/ExportSubgraph"
+	GraphEngineOps_DeleteGraph_FullMethodName    = "/graphengine.v1.GraphEngineOps/DeleteGraph"
 )
 
 // GraphEngineOpsClient is the client API for GraphEngineOps service.
@@ -49,6 +50,8 @@ type GraphEngineOpsClient interface {
 	TraceJob(ctx context.Context, in *TraceJobRequest, opts ...grpc.CallOption) (*TraceJobResponse, error)
 	// Export subgraph data (guarded, small views only)
 	ExportSubgraph(ctx context.Context, in *ExportSubgraphRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ExportChunk], error)
+	// Delete a graph by name
+	DeleteGraph(ctx context.Context, in *DeleteGraphRequest, opts ...grpc.CallOption) (*DeleteGraphResponse, error)
 }
 
 type graphEngineOpsClient struct {
@@ -138,6 +141,16 @@ func (c *graphEngineOpsClient) ExportSubgraph(ctx context.Context, in *ExportSub
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type GraphEngineOps_ExportSubgraphClient = grpc.ServerStreamingClient[ExportChunk]
 
+func (c *graphEngineOpsClient) DeleteGraph(ctx context.Context, in *DeleteGraphRequest, opts ...grpc.CallOption) (*DeleteGraphResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DeleteGraphResponse)
+	err := c.cc.Invoke(ctx, GraphEngineOps_DeleteGraph_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // GraphEngineOpsServer is the server API for GraphEngineOps service.
 // All implementations must embed UnimplementedGraphEngineOpsServer
 // for forward compatibility.
@@ -156,6 +169,8 @@ type GraphEngineOpsServer interface {
 	TraceJob(context.Context, *TraceJobRequest) (*TraceJobResponse, error)
 	// Export subgraph data (guarded, small views only)
 	ExportSubgraph(*ExportSubgraphRequest, grpc.ServerStreamingServer[ExportChunk]) error
+	// Delete a graph by name
+	DeleteGraph(context.Context, *DeleteGraphRequest) (*DeleteGraphResponse, error)
 	mustEmbedUnimplementedGraphEngineOpsServer()
 }
 
@@ -186,6 +201,9 @@ func (UnimplementedGraphEngineOpsServer) TraceJob(context.Context, *TraceJobRequ
 }
 func (UnimplementedGraphEngineOpsServer) ExportSubgraph(*ExportSubgraphRequest, grpc.ServerStreamingServer[ExportChunk]) error {
 	return status.Error(codes.Unimplemented, "method ExportSubgraph not implemented")
+}
+func (UnimplementedGraphEngineOpsServer) DeleteGraph(context.Context, *DeleteGraphRequest) (*DeleteGraphResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeleteGraph not implemented")
 }
 func (UnimplementedGraphEngineOpsServer) mustEmbedUnimplementedGraphEngineOpsServer() {}
 func (UnimplementedGraphEngineOpsServer) testEmbeddedByValue()                        {}
@@ -327,6 +345,24 @@ func _GraphEngineOps_ExportSubgraph_Handler(srv interface{}, stream grpc.ServerS
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type GraphEngineOps_ExportSubgraphServer = grpc.ServerStreamingServer[ExportChunk]
 
+func _GraphEngineOps_DeleteGraph_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteGraphRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GraphEngineOpsServer).DeleteGraph(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GraphEngineOps_DeleteGraph_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GraphEngineOpsServer).DeleteGraph(ctx, req.(*DeleteGraphRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // GraphEngineOps_ServiceDesc is the grpc.ServiceDesc for GraphEngineOps service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -357,6 +393,10 @@ var GraphEngineOps_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "TraceJob",
 			Handler:    _GraphEngineOps_TraceJob_Handler,
+		},
+		{
+			MethodName: "DeleteGraph",
+			Handler:    _GraphEngineOps_DeleteGraph_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

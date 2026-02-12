@@ -36,6 +36,9 @@ service GraphEngineOps {
 
   // Export subgraph data (guarded, small views only)
   rpc ExportSubgraph(ExportSubgraphRequest) returns (stream ExportChunk);
+
+  // Delete a graph by name
+  rpc DeleteGraph(DeleteGraphRequest) returns (DeleteGraphResponse);
 }
 
 // =============================================================================
@@ -150,4 +153,16 @@ message ExportSubgraphRequest {
 
 message ExportChunk {
   bytes data = 1;
+}
+
+// =============================================================================
+// DeleteGraph
+// =============================================================================
+
+message DeleteGraphRequest {
+  string graph_name = 1;
+}
+
+message DeleteGraphResponse {
+  bool deleted = 1; // true if graph existed and was deleted
 }
