@@ -1,0 +1,45 @@
+name: 'Setup igraph'
+description: 'Install igraph C library for Go CGO builds'
+
+inputs:
+  igraph-version:
+    description: 'igraph version to install'
+    required: false
+    default: '0.10.15'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install igraph dependencies
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends \
+          pkg-config cmake ninja-build gcc g++ \
+          libxml2-dev libglpk-dev libblas-dev liblapack-dev
+
+    - name: Build and install igraph
+      shell: bash
+      run: |
+        IGRAPH_VERSION="${{ inputs.igraph-version }}"
+        curl -sL "https://github.com/igraph/igraph/releases/download/${IGRAPH_VERSION}/igraph-${IGRAPH_VERSION}.tar.gz" | tar xz
+        cd "igraph-${IGRAPH_VERSION}"
+        mkdir build && cd build
+        cmake .. -GNinja \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_INSTALL_PREFIX=/usr/local \
+          -DIGRAPH_ENABLE_TLS=ON \
+          -DIGRAPH_USE_INTERNAL_ARPACK=ON \
+          -DBUILD_SHARED_LIBS=ON
+        ninja
+        sudo ninja install
+        sudo ldconfig
+        cd ../..
+        rm -rf "igraph-${IGRAPH_VERSION}"
+
+    - name: Set environment variables
+      shell: bash
+      run: |
+        echo "PKG_CONFIG_PATH=/usr/local/lib/pkgconfig" >> $GITHUB_ENV
+        echo "LD_LIBRARY_PATH=/usr/local/lib" >> $GITHUB_ENV
+        echo "CGO_ENABLED=1" >> $GITHUB_ENV
