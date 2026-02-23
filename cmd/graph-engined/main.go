@@ -115,7 +115,9 @@ func startMetricsServer(cfg *config.Config, logger *slog.Logger) *http.Server {
 	mux.Handle("/metrics", promhttp.Handler())
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
+		if _, err := w.Write([]byte("OK")); err != nil {
+			logger.Error("health check write failed", "error", err)
+		}
 	})
 
 	server := &http.Server{

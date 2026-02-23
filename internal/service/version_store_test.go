@@ -340,8 +340,8 @@ func TestVersionStore_Stats(t *testing.T) {
 	// Add versions
 	gv1 := createTestGraphVersion("v1", 10, 5)
 	gv2 := createTestGraphVersion("v2", 20, 10)
-	vs.Store(gv1)
-	vs.Store(gv2)
+	vs.Store(gv1) //nolint:errcheck // test setup
+	vs.Store(gv2) //nolint:errcheck // test setup
 
 	stats = vs.Stats()
 	if stats.TotalVersions != 2 {
@@ -376,7 +376,7 @@ func TestVersionStore_GetWithoutPin(t *testing.T) {
 	vs := NewVersionStore(time.Hour, 0)
 
 	gv := createTestGraphVersion("v1", 10, 5)
-	vs.Store(gv)
+	vs.Store(gv) //nolint:errcheck // test setup
 
 	// GetWithoutPin should work
 	retrieved, err := vs.GetWithoutPin("v1")
@@ -397,7 +397,7 @@ func TestVersionStore_Delete(t *testing.T) {
 	vs := NewVersionStore(time.Hour, 0)
 
 	gv := createTestGraphVersion("v1", 10, 5)
-	vs.Store(gv)
+	vs.Store(gv) //nolint:errcheck // test setup
 
 	memBefore := vs.TotalMemory()
 
@@ -422,7 +422,7 @@ func TestVersionStore_Delete_Pinned(t *testing.T) {
 	vs := NewVersionStore(time.Hour, 0)
 
 	gv := createTestGraphVersion("v1", 10, 5)
-	vs.Store(gv)
+	vs.Store(gv) //nolint:errcheck // test setup
 
 	// Pin the version
 	retrieved, _ := vs.Get("v1")
@@ -452,7 +452,7 @@ func TestVersionStore_ListVersionIDs(t *testing.T) {
 	// Add versions
 	for i := 0; i < 5; i++ {
 		gv := createTestGraphVersion(fmt.Sprintf("v%d", i), 10, 5)
-		vs.Store(gv)
+		vs.Store(gv) //nolint:errcheck // test setup
 	}
 
 	ids := vs.ListVersionIDs()

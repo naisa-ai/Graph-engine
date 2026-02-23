@@ -14,7 +14,7 @@ func TestPersistenceManager_SaveAndLoad(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tempDir)
+	defer os.RemoveAll(tempDir) //nolint:errcheck // test cleanup
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 
@@ -26,11 +26,11 @@ func TestPersistenceManager_SaveAndLoad(t *testing.T) {
 	result1.PathVertices = []uint64{1, 2, 3}
 	result1.PathCost = 2.5
 	result1.Meta["found"] = "true"
-	resultStore.Store(result1)
+	resultStore.Store(result1) //nolint:errcheck // test setup
 
 	result2 := NewAlgoResult("version1", AlgoKindComponents, "hash2")
 	result2.MembershipU32 = []uint32{0, 0, 1, 1}
-	resultStore.Store(result2)
+	resultStore.Store(result2) //nolint:errcheck // test setup
 
 	// Create persistence manager
 	config := PersistenceConfig{
@@ -107,7 +107,7 @@ func TestPersistenceManager_Compression(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tempDir)
+	defer os.RemoveAll(tempDir) //nolint:errcheck // test cleanup
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 	resultStore := NewResultStore(100, 100<<20, 5*time.Minute)
@@ -118,7 +118,7 @@ func TestPersistenceManager_Compression(t *testing.T) {
 	for i := range result.MembershipU32 {
 		result.MembershipU32[i] = uint32(i % 100)
 	}
-	resultStore.Store(result)
+	resultStore.Store(result) //nolint:errcheck // test setup
 
 	// Save with compression
 	configCompressed := PersistenceConfig{
@@ -128,9 +128,9 @@ func TestPersistenceManager_Compression(t *testing.T) {
 		MaxSnapshots:      3,
 		CompressSnapshots: true,
 	}
-	os.MkdirAll(configCompressed.DataDir, 0755)
+	os.MkdirAll(configCompressed.DataDir, 0755) //nolint:errcheck // test setup
 	pm1 := NewPersistenceManager(configCompressed, logger, nil, resultStore, nil)
-	pm1.SaveSnapshot()
+	pm1.SaveSnapshot() //nolint:errcheck // test setup
 	pm1.Stop()
 
 	// Save without compression
@@ -141,9 +141,9 @@ func TestPersistenceManager_Compression(t *testing.T) {
 		MaxSnapshots:      3,
 		CompressSnapshots: false,
 	}
-	os.MkdirAll(configUncompressed.DataDir, 0755)
+	os.MkdirAll(configUncompressed.DataDir, 0755) //nolint:errcheck // test setup
 	pm2 := NewPersistenceManager(configUncompressed, logger, nil, resultStore, nil)
-	pm2.SaveSnapshot()
+	pm2.SaveSnapshot() //nolint:errcheck // test setup
 	pm2.Stop()
 
 	// Compare sizes
@@ -174,13 +174,13 @@ func TestPersistenceManager_CleanupOldSnapshots(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tempDir)
+	defer os.RemoveAll(tempDir) //nolint:errcheck // test cleanup
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 	resultStore := NewResultStore(100, 100<<20, 5*time.Minute)
 
 	result := NewAlgoResult("version1", AlgoKindShortestPath, "hash1")
-	resultStore.Store(result)
+	resultStore.Store(result) //nolint:errcheck // test setup
 
 	config := PersistenceConfig{
 		Enabled:           true,
@@ -222,13 +222,13 @@ func TestPersistenceManager_Stats(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tempDir)
+	defer os.RemoveAll(tempDir) //nolint:errcheck // test cleanup
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 	resultStore := NewResultStore(100, 100<<20, 5*time.Minute)
 
 	result := NewAlgoResult("version1", AlgoKindShortestPath, "hash1")
-	resultStore.Store(result)
+	resultStore.Store(result) //nolint:errcheck // test setup
 
 	config := PersistenceConfig{
 		Enabled:           true,
@@ -250,7 +250,7 @@ func TestPersistenceManager_Stats(t *testing.T) {
 	}
 
 	// Save a snapshot
-	pm.SaveSnapshot()
+	pm.SaveSnapshot() //nolint:errcheck // test setup
 
 	stats = pm.Stats()
 	if stats.SnapshotCount != 1 {
@@ -291,7 +291,7 @@ func TestPersistenceManager_KSPResults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tempDir)
+	defer os.RemoveAll(tempDir) //nolint:errcheck // test cleanup
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
 	resultStore := NewResultStore(100, 100<<20, 5*time.Minute)
@@ -304,7 +304,7 @@ func TestPersistenceManager_KSPResults(t *testing.T) {
 	}
 	result.Meta["k"] = "2"
 	result.Meta["paths_found"] = "2"
-	resultStore.Store(result)
+	resultStore.Store(result) //nolint:errcheck // test setup
 
 	config := PersistenceConfig{
 		Enabled:           true,
@@ -315,13 +315,13 @@ func TestPersistenceManager_KSPResults(t *testing.T) {
 	}
 
 	pm := NewPersistenceManager(config, logger, nil, resultStore, nil)
-	pm.SaveSnapshot()
+	pm.SaveSnapshot() //nolint:errcheck // test setup
 	pm.Stop()
 
 	// Restore
 	newResultStore := NewResultStore(100, 100<<20, 5*time.Minute)
 	pm2 := NewPersistenceManager(config, logger, nil, newResultStore, nil)
-	pm2.LoadSnapshot()
+	pm2.LoadSnapshot() //nolint:errcheck // test setup
 
 	// Verify KSP paths
 	restored, err := newResultStore.Get(result.ID)

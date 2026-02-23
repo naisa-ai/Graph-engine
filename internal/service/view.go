@@ -4,6 +4,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"io"
+	"log/slog"
 	"sync"
 	"time"
 	"unsafe"
@@ -57,16 +59,16 @@ type View struct {
 // Returns a wrapper that implements index-based access.
 // DEPRECATED: Use EdgeMaskBitmap() for direct bitmap access in new code.
 type EdgeMask struct {
-	bitmap *roaring.Bitmap
-	size   uint32
+	bitmap *roaring.Bitmap //nolint:unused // deprecated wrapper field
+	size   uint32          //nolint:unused // deprecated wrapper field
 }
 
 // VertexMask provides backward-compatible access to vertex inclusion status.
 // Returns a wrapper that implements index-based access.
 // DEPRECATED: Use VertexMaskBitmap() for direct bitmap access in new code.
 type VertexMask struct {
-	bitmap *roaring.Bitmap
-	size   uint32
+	bitmap *roaring.Bitmap //nolint:unused // deprecated wrapper field
+	size   uint32          //nolint:unused // deprecated wrapper field
 }
 
 // NewView creates a new empty View from a GraphVersion.
@@ -766,6 +768,13 @@ func (v *View) Clone() *View {
 // Hash and serialization
 // =============================================================================
 
+// mustFprintf writes to w and logs any error (hash writes rarely fail).
+func mustFprintf(w io.Writer, format string, args ...interface{}) {
+	if _, err := fmt.Fprintf(w, format, args...); err != nil {
+		slog.Default().Error("hash write failed", "error", err)
+	}
+}
+
 // HashViewSpec creates a hash of a ViewSpec for caching.
 func HashViewSpec(spec *gepb.ViewSpec) string {
 	h := sha256.New()
@@ -773,28 +782,28 @@ func HashViewSpec(spec *gepb.ViewSpec) string {
 	// Hash key components of the spec
 	if spec.GetVfilter() != nil {
 		for _, p := range spec.GetVfilter().GetPredicates() {
-			h.Write([]byte(fmt.Sprintf("vf:%s:%d", p.GetColumn(), p.GetOp())))
+			mustFprintf(h, "vf:%s:%d", p.GetColumn(), p.GetOp())
 		}
 	}
 	if spec.GetEfilter() != nil {
 		for _, p := range spec.GetEfilter().GetPredicates() {
-			h.Write([]byte(fmt.Sprintf("ef:%s:%d", p.GetColumn(), p.GetOp())))
+			mustFprintf(h, "ef:%s:%d", p.GetColumn(), p.GetOp())
 		}
 	}
 	for _, v := range spec.GetInduceVerticesU64() {
-		h.Write([]byte(fmt.Sprintf("iv:%d", v)))
+		mustFprintf(h, "iv:%d", v)
 	}
 	if spec.GetNeighborhood() != nil {
 		for _, s := range spec.GetNeighborhood().GetSeedsU64() {
-			h.Write([]byte(fmt.Sprintf("ns:%d", s)))
+			mustFprintf(h, "ns:%d", s)
 		}
-		h.Write([]byte(fmt.Sprintf("nh:%d:%d", spec.GetNeighborhood().GetHops(), spec.GetNeighborhood().GetMode())))
+		mustFprintf(h, "nh:%d:%d", spec.GetNeighborhood().GetHops(), spec.GetNeighborhood().GetMode())
 	}
 	for _, v := range spec.GetExcludeVerticesU64() {
-		h.Write([]byte(fmt.Sprintf("ev:%d", v)))
+		mustFprintf(h, "ev:%d", v)
 	}
 	for _, e := range spec.GetExcludeEdgesU64() {
-		h.Write([]byte(fmt.Sprintf("ee:%d", e)))
+		mustFprintf(h, "ee:%d", e)
 	}
 
 	return hex.EncodeToString(h.Sum(nil))[:16]

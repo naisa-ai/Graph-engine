@@ -384,7 +384,7 @@ func (gv *GraphVersion) GetVertexCommunity(vertexIdx uint32) (uint32, bool) {
 
 // HasCommunities returns true if community data is available.
 func (gv *GraphVersion) HasCommunities() bool {
-	return gv.CommunityMembership != nil && len(gv.CommunityMembership) > 0
+	return len(gv.CommunityMembership) > 0
 }
 
 // GetCommunityMembers returns all vertex indices belonging to a specific community.
@@ -422,7 +422,7 @@ func (gv *GraphVersion) GetVertexCoreness(vertexIdx uint32) (uint32, bool) {
 
 // HasKCore returns true if k-core data is available.
 func (gv *GraphVersion) HasKCore() bool {
-	return gv.KCoreness != nil && len(gv.KCoreness) > 0
+	return len(gv.KCoreness) > 0
 }
 
 // GetKCoreMembers returns all vertex indices with coreness >= k.
@@ -459,5 +459,5 @@ func (gv *GraphVersion) GetVertexBetweenness(vertexIdx uint32) (float64, bool) {
 
 // HasBetweenness returns true if betweenness data is available.
 func (gv *GraphVersion) HasBetweenness() bool {
-	return gv.BetweennessScores != nil && len(gv.BetweennessScores) > 0
+	return len(gv.BetweennessScores) > 0
 }

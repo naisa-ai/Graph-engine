@@ -62,7 +62,7 @@ func ComputeKCore(
 	shimCfg *KCoreShimConfig,
 ) (*KCoreResult, error) {
 	if config == nil {
-		config = DefaultKCoreConfig()
+		config = DefaultKCoreConfig() //nolint:staticcheck,ineffassign // keep explicit DefaultKCoreConfig; config may be used by callers
 	}
 
 	// K-core requires the igraph shim
@@ -74,7 +74,7 @@ func ComputeKCore(
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
-	default:
+	default: //nolint:revive // non-blocking context check
 	}
 
 	// Compute k-core using the shim

@@ -69,6 +69,8 @@ func createPathGraph() *GraphVersion {
 }
 
 // createWeightedGraphForBetweenness creates a weighted graph for betweenness testing.
+//
+//nolint:unused // test helper for future betweenness tests
 func createWeightedGraphForBetweenness() *GraphVersion {
 	vertices := []uint64{1, 2, 3, 4, 5}
 	src := []uint64{1, 1, 2, 3, 3}

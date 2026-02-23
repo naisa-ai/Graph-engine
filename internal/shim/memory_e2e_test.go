@@ -264,7 +264,7 @@ func TestE2E_ResultLifecycle_Components(t *testing.T) {
 	graphMemory := tracker.Current()
 
 	// Compute components
-	result, err := tg.Graph.Components(true)
+	result, err := tg.Graph.Components(true) //nolint:staticcheck // keep explicit Graph selector
 	if err != nil {
 		t.Fatalf("failed to compute components: %v", err)
 	}
@@ -298,7 +298,7 @@ func TestE2E_ResultLifecycle_ShortestPath(t *testing.T) {
 	defer tg.Close()
 
 	// Compute shortest path
-	result, err := tg.Graph.ShortestPath(0, 4, nil, true, true)
+	result, err := tg.Graph.ShortestPath(0, 4, nil, true, true) //nolint:staticcheck // keep explicit Graph selector
 	if err != nil {
 		t.Fatalf("failed to compute shortest path: %v", err)
 	}
@@ -383,10 +383,13 @@ func TestE2E_MemoryLimits_DynamicAdjustment(t *testing.T) {
 	tracker := NewMemoryTracker(10000) // 10KB
 
 	// Allocate some memory
-	tracker.Allocate(5000, "test", "")
+	_, err := tracker.Allocate(5000, "test", "")
+	if err != nil {
+		t.Errorf("Allocate failed: %v", err)
+	}
 
 	// Can increase limit
-	err := tracker.SetLimit(20000)
+	err = tracker.SetLimit(20000)
 	if err != nil {
 		t.Errorf("increasing limit should succeed: %v", err)
 	}
@@ -855,7 +858,10 @@ func BenchmarkE2E_TrackerStatsRead(b *testing.B) {
 
 	// Pre-populate with some allocations
 	for i := 0; i < 100; i++ {
-		tracker.Allocate(100, "test", fmt.Sprintf("label-%d", i))
+		_, err := tracker.Allocate(100, "test", fmt.Sprintf("label-%d", i))
+		if err != nil {
+			b.Errorf("Allocate failed: %v", err)
+		}
 	}
 
 	b.ResetTimer()

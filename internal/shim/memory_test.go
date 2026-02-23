@@ -32,9 +32,18 @@ func TestMemoryTracker_Allocate(t *testing.T) {
 	t.Run("multiple allocations", func(t *testing.T) {
 		tracker := NewMemoryTracker(0)
 
-		id1, _ := tracker.Allocate(100, "graph", "g1")
-		id2, _ := tracker.Allocate(200, "view", "v1")
-		id3, _ := tracker.Allocate(300, "result", "r1")
+		id1, err := tracker.Allocate(100, "graph", "g1")
+		if err != nil {
+			t.Errorf("Allocate failed: %v", err)
+		}
+		id2, err := tracker.Allocate(200, "view", "v1")
+		if err != nil {
+			t.Errorf("Allocate failed: %v", err)
+		}
+		id3, err := tracker.Allocate(300, "result", "r1")
+		if err != nil {
+			t.Errorf("Allocate failed: %v", err)
+		}
 
 		if id1 == id2 || id2 == id3 || id1 == id3 {
 			t.Error("allocation IDs should be unique")
@@ -56,19 +65,31 @@ func TestMemoryTracker_Allocate(t *testing.T) {
 	t.Run("allocation updates peak", func(t *testing.T) {
 		tracker := NewMemoryTracker(0)
 
-		tracker.Allocate(1000, "test", "")
+		_, err := tracker.Allocate(1000, "test", "")
+		if err != nil {
+			t.Errorf("Allocate failed: %v", err)
+		}
 		if tracker.Peak() != 1000 {
 			t.Errorf("expected peak 1000, got %d", tracker.Peak())
 		}
 
-		tracker.Allocate(500, "test", "")
+		_, err = tracker.Allocate(500, "test", "")
+		if err != nil {
+			t.Errorf("Allocate failed: %v", err)
+		}
 		if tracker.Peak() != 1500 {
 			t.Errorf("expected peak 1500, got %d", tracker.Peak())
 		}
 
 		// Deallocate and allocate less - peak should stay
-		tracker.DeallocateBySize(500, "test")
-		tracker.Allocate(100, "test", "")
+		err = tracker.DeallocateBySize(500, "test")
+		if err != nil {
+			t.Errorf("DeallocateBySize failed: %v", err)
+		}
+		_, err = tracker.Allocate(100, "test", "")
+		if err != nil {
+			t.Errorf("Allocate failed: %v", err)
+		}
 
 		if tracker.Peak() != 1500 {
 			t.Errorf("peak should remain 1500, got %d", tracker.Peak())
@@ -86,7 +107,10 @@ func TestMemoryTracker_Allocate(t *testing.T) {
 			callbackInfo = info
 		}, nil)
 
-		tracker.Allocate(500, "graph", "test-label")
+		_, err := tracker.Allocate(500, "graph", "test-label")
+		if err != nil {
+			t.Errorf("Allocate failed: %v", err)
+		}
 
 		if !callbackCalled {
 			t.Error("allocation callback should have been called")
@@ -105,8 +129,11 @@ func TestMemoryTracker_Deallocate(t *testing.T) {
 	t.Run("basic deallocation", func(t *testing.T) {
 		tracker := NewMemoryTracker(0)
 
-		id, _ := tracker.Allocate(1000, "test", "")
-		err := tracker.Deallocate(id)
+		id, err := tracker.Allocate(1000, "test", "")
+		if err != nil {
+			t.Errorf("Allocate failed: %v", err)
+		}
+		err = tracker.Deallocate(id)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -119,10 +146,19 @@ func TestMemoryTracker_Deallocate(t *testing.T) {
 	t.Run("deallocation updates stats", func(t *testing.T) {
 		tracker := NewMemoryTracker(0)
 
-		id1, _ := tracker.Allocate(100, "test", "")
-		id2, _ := tracker.Allocate(200, "test", "")
+		id1, err := tracker.Allocate(100, "test", "")
+		if err != nil {
+			t.Errorf("Allocate failed: %v", err)
+		}
+		id2, err := tracker.Allocate(200, "test", "")
+		if err != nil {
+			t.Errorf("Allocate failed: %v", err)
+		}
 
-		tracker.Deallocate(id1)
+		err = tracker.Deallocate(id1)
+		if err != nil {
+			t.Errorf("Deallocate failed: %v", err)
+		}
 
 		stats := tracker.Stats()
 		if stats.CurrentBytes != 200 {
@@ -131,11 +167,14 @@ func TestMemoryTracker_Deallocate(t *testing.T) {
 		if stats.TotalDeallocations != 1 {
 			t.Errorf("expected 1 deallocation, got %d", stats.TotalDeallocations)
 		}
-		if stats.ActiveAllocations != 1 {
+		if 		stats.ActiveAllocations != 1 {
 			t.Errorf("expected 1 active allocation, got %d", stats.ActiveAllocations)
 		}
 
-		tracker.Deallocate(id2)
+		err = tracker.Deallocate(id2)
+		if err != nil {
+			t.Errorf("Deallocate failed: %v", err)
+		}
 		stats = tracker.Stats()
 		if stats.CurrentBytes != 0 {
 			t.Errorf("expected current 0, got %d", stats.CurrentBytes)
@@ -150,8 +189,14 @@ func TestMemoryTracker_Deallocate(t *testing.T) {
 			callbackCalled = true
 		})
 
-		id, _ := tracker.Allocate(500, "test", "")
-		tracker.Deallocate(id)
+		id, err := tracker.Allocate(500, "test", "")
+		if err != nil {
+			t.Errorf("Allocate failed: %v", err)
+		}
+		err = tracker.Deallocate(id)
+		if err != nil {
+			t.Errorf("Deallocate failed: %v", err)
+		}
 
 		if !callbackCalled {
 			t.Error("deallocation callback should have been called")
@@ -161,11 +206,20 @@ func TestMemoryTracker_Deallocate(t *testing.T) {
 	t.Run("deallocate by size", func(t *testing.T) {
 		tracker := NewMemoryTracker(0)
 
-		tracker.Allocate(100, "graph", "")
-		tracker.Allocate(200, "view", "")
-		tracker.Allocate(100, "result", "")
+		_, err := tracker.Allocate(100, "graph", "")
+		if err != nil {
+			t.Errorf("Allocate failed: %v", err)
+		}
+		_, err = tracker.Allocate(200, "view", "")
+		if err != nil {
+			t.Errorf("Allocate failed: %v", err)
+		}
+		_, err = tracker.Allocate(100, "result", "")
+		if err != nil {
+			t.Errorf("Allocate failed: %v", err)
+		}
 
-		err := tracker.DeallocateBySize(200, "view")
+		err = tracker.DeallocateBySize(200, "view")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -239,7 +293,10 @@ func TestMemoryTracker_Limits(t *testing.T) {
 			t.Error("should be able to allocate 500")
 		}
 
-		tracker.Allocate(600, "test", "")
+		_, err := tracker.Allocate(600, "test", "")
+		if err != nil {
+			t.Errorf("Allocate failed: %v", err)
+		}
 
 		if tracker.CanAllocate(500) {
 			t.Error("should not be able to allocate 500 more")
@@ -257,7 +314,10 @@ func TestMemoryTracker_Limits(t *testing.T) {
 			t.Errorf("expected 1000 available, got %d", tracker.Available())
 		}
 
-		tracker.Allocate(300, "test", "")
+		_, err := tracker.Allocate(300, "test", "")
+		if err != nil {
+			t.Errorf("Allocate failed: %v", err)
+		}
 		if tracker.Available() != 700 {
 			t.Errorf("expected 700 available, got %d", tracker.Available())
 		}
@@ -280,10 +340,13 @@ func TestMemoryTracker_Limits(t *testing.T) {
 	t.Run("set limit", func(t *testing.T) {
 		tracker := NewMemoryTracker(2000)
 
-		tracker.Allocate(500, "test", "")
+		_, err := tracker.Allocate(500, "test", "")
+		if err != nil {
+			t.Errorf("Allocate failed: %v", err)
+		}
 
 		// Can reduce limit above current usage
-		err := tracker.SetLimit(1000)
+		err = tracker.SetLimit(1000)
 		if err != nil {
 			t.Errorf("should be able to set limit above current usage: %v", err)
 		}
@@ -304,8 +367,14 @@ func TestMemoryTracker_LeakDetect(t *testing.T) {
 	t.Run("no leaks", func(t *testing.T) {
 		tracker := NewMemoryTracker(0)
 
-		id, _ := tracker.Allocate(100, "test", "")
-		tracker.Deallocate(id)
+		id, err := tracker.Allocate(100, "test", "")
+		if err != nil {
+			t.Errorf("Allocate failed: %v", err)
+		}
+		err = tracker.Deallocate(id)
+		if err != nil {
+			t.Errorf("Deallocate failed: %v", err)
+		}
 
 		report := tracker.CheckLeaks(0)
 		if report.HasLeaks {
@@ -316,13 +385,22 @@ func TestMemoryTracker_LeakDetect(t *testing.T) {
 	t.Run("detect old allocations", func(t *testing.T) {
 		tracker := NewMemoryTracker(0)
 
-		tracker.Allocate(100, "test", "old1")
-		tracker.Allocate(200, "test", "old2")
+		_, err := tracker.Allocate(100, "test", "old1")
+		if err != nil {
+			t.Errorf("Allocate failed: %v", err)
+		}
+		_, err = tracker.Allocate(200, "test", "old2")
+		if err != nil {
+			t.Errorf("Allocate failed: %v", err)
+		}
 
 		// Wait a bit
 		time.Sleep(50 * time.Millisecond)
 
-		tracker.Allocate(300, "test", "new")
+		_, err = tracker.Allocate(300, "test", "new")
+		if err != nil {
+			t.Errorf("Allocate failed: %v", err)
+		}
 
 		report := tracker.CheckLeaks(40 * time.Millisecond)
 		if !report.HasLeaks {
@@ -339,7 +417,10 @@ func TestMemoryTracker_LeakDetect(t *testing.T) {
 	t.Run("leak report details", func(t *testing.T) {
 		tracker := NewMemoryTracker(0)
 
-		tracker.Allocate(100, "graph", "leaked-graph")
+		_, err := tracker.Allocate(100, "graph", "leaked-graph")
+		if err != nil {
+			t.Errorf("Allocate failed: %v", err)
+		}
 		time.Sleep(20 * time.Millisecond)
 
 		report := tracker.CheckLeaks(10 * time.Millisecond)
@@ -373,7 +454,10 @@ func TestMemoryTracker_Concurrent(t *testing.T) {
 			go func() {
 				defer wg.Done()
 				for j := 0; j < allocsPerGoroutine; j++ {
-					tracker.Allocate(10, "test", "")
+					_, err := tracker.Allocate(10, "test", "")
+					if err != nil {
+						t.Errorf("Allocate failed: %v", err)
+					}
 				}
 			}()
 		}
@@ -497,8 +581,14 @@ func TestMemoryTracker_ZeroAlloc(t *testing.T) {
 	t.Run("zero size counts as allocation", func(t *testing.T) {
 		tracker := NewMemoryTracker(0)
 
-		tracker.Allocate(0, "test", "")
-		tracker.Allocate(0, "test", "")
+		_, err := tracker.Allocate(0, "test", "")
+		if err != nil {
+			t.Errorf("Allocate failed: %v", err)
+		}
+		_, err = tracker.Allocate(0, "test", "")
+		if err != nil {
+			t.Errorf("Allocate failed: %v", err)
+		}
 
 		stats := tracker.Stats()
 		if stats.TotalAllocations != 2 {
@@ -518,9 +608,12 @@ func TestMemoryTracker_DoubleDealloc(t *testing.T) {
 	t.Run("double deallocation by ID", func(t *testing.T) {
 		tracker := NewMemoryTracker(0)
 
-		id, _ := tracker.Allocate(100, "test", "")
+		id, err := tracker.Allocate(100, "test", "")
+		if err != nil {
+			t.Errorf("Allocate failed: %v", err)
+		}
 
-		err := tracker.Deallocate(id)
+		err = tracker.Deallocate(id)
 		if err != nil {
 			t.Fatalf("first deallocation should succeed: %v", err)
 		}
@@ -543,9 +636,12 @@ func TestMemoryTracker_DoubleDealloc(t *testing.T) {
 	t.Run("deallocate by size not found", func(t *testing.T) {
 		tracker := NewMemoryTracker(0)
 
-		tracker.Allocate(100, "graph", "")
+		_, err := tracker.Allocate(100, "graph", "")
+		if err != nil {
+			t.Errorf("Allocate failed: %v", err)
+		}
 
-		err := tracker.DeallocateBySize(100, "view") // wrong type
+		err = tracker.DeallocateBySize(100, "view") // wrong type
 		if !errors.Is(err, ErrAllocationNotFound) {
 			t.Errorf("expected ErrAllocationNotFound, got %v", err)
 		}
@@ -596,10 +692,22 @@ func TestMemoryTracker_Statistics(t *testing.T) {
 	t.Run("stats accumulation", func(t *testing.T) {
 		tracker := NewMemoryTracker(0)
 
-		id1, _ := tracker.Allocate(100, "graph", "")
-		id2, _ := tracker.Allocate(200, "view", "")
-		tracker.Deallocate(id1)
-		tracker.Allocate(50, "result", "")
+		id1, err := tracker.Allocate(100, "graph", "")
+		if err != nil {
+			t.Errorf("Allocate failed: %v", err)
+		}
+		id2, err := tracker.Allocate(200, "view", "")
+		if err != nil {
+			t.Errorf("Allocate failed: %v", err)
+		}
+		err = tracker.Deallocate(id1)
+		if err != nil {
+			t.Errorf("Deallocate failed: %v", err)
+		}
+		_, err = tracker.Allocate(50, "result", "")
+		if err != nil {
+			t.Errorf("Allocate failed: %v", err)
+		}
 
 		stats := tracker.Stats()
 
@@ -622,15 +730,27 @@ func TestMemoryTracker_Statistics(t *testing.T) {
 			t.Errorf("expected 2 active, got %d", stats.ActiveAllocations)
 		}
 
-		tracker.Deallocate(id2)
+		err = tracker.Deallocate(id2)
+		if err != nil {
+			t.Errorf("Deallocate failed: %v", err)
+		}
 	})
 
 	t.Run("active allocations list", func(t *testing.T) {
 		tracker := NewMemoryTracker(0)
 
-		tracker.Allocate(100, "graph", "g1")
-		tracker.Allocate(200, "view", "v1")
-		tracker.Allocate(300, "graph", "g2")
+		_, err := tracker.Allocate(100, "graph", "g1")
+		if err != nil {
+			t.Errorf("Allocate failed: %v", err)
+		}
+		_, err = tracker.Allocate(200, "view", "v1")
+		if err != nil {
+			t.Errorf("Allocate failed: %v", err)
+		}
+		_, err = tracker.Allocate(300, "graph", "g2")
+		if err != nil {
+			t.Errorf("Allocate failed: %v", err)
+		}
 
 		allocs := tracker.ActiveAllocations()
 		if len(allocs) != 3 {
@@ -650,9 +770,18 @@ func TestMemoryTracker_Statistics(t *testing.T) {
 	t.Run("allocations by type", func(t *testing.T) {
 		tracker := NewMemoryTracker(0)
 
-		tracker.Allocate(100, "graph", "")
-		tracker.Allocate(200, "graph", "")
-		tracker.Allocate(300, "view", "")
+		_, err := tracker.Allocate(100, "graph", "")
+		if err != nil {
+			t.Errorf("Allocate failed: %v", err)
+		}
+		_, err = tracker.Allocate(200, "graph", "")
+		if err != nil {
+			t.Errorf("Allocate failed: %v", err)
+		}
+		_, err = tracker.Allocate(300, "view", "")
+		if err != nil {
+			t.Errorf("Allocate failed: %v", err)
+		}
 
 		count, bytes := tracker.CountByType("graph")
 		if count != 2 || bytes != 300 {
@@ -678,8 +807,14 @@ func TestMemoryTracker_Statistics(t *testing.T) {
 func TestMemoryTracker_Reset(t *testing.T) {
 	tracker := NewMemoryTracker(1000)
 
-	tracker.Allocate(100, "test", "")
-	tracker.Allocate(200, "test", "")
+	_, err := tracker.Allocate(100, "test", "")
+	if err != nil {
+		t.Errorf("Allocate failed: %v", err)
+	}
+	_, err = tracker.Allocate(200, "test", "")
+	if err != nil {
+		t.Errorf("Allocate failed: %v", err)
+	}
 
 	tracker.Reset()
 
@@ -698,7 +833,10 @@ func TestMemoryTracker_Reset(t *testing.T) {
 	}
 
 	// Should be able to allocate again with new IDs
-	id, _ := tracker.Allocate(50, "test", "")
+	id, err := tracker.Allocate(50, "test", "")
+	if err != nil {
+		t.Errorf("Allocate failed: %v", err)
+	}
 	if id != 1 {
 		t.Errorf("expected ID 1 after reset, got %d", id)
 	}
@@ -717,7 +855,10 @@ func TestTrackedGraph(t *testing.T) {
 		// tg, err := NewTrackedGraph(tracker, 3, []uint32{0, 1}, []uint32{1, 2}, false)
 
 		// For now, simulate with manual allocation
-		id, _ := tracker.Allocate(1000, "graph", "test-graph")
+		id, err := tracker.Allocate(1000, "graph", "test-graph")
+		if err != nil {
+			t.Errorf("Allocate failed: %v", err)
+		}
 
 		if tracker.Current() != 1000 {
 			t.Errorf("expected 1000 bytes tracked, got %d", tracker.Current())
@@ -728,7 +869,10 @@ func TestTrackedGraph(t *testing.T) {
 			t.Errorf("expected 1 graph, got %d", count)
 		}
 
-		tracker.Deallocate(id)
+		err = tracker.Deallocate(id)
+		if err != nil {
+			t.Errorf("Deallocate failed: %v", err)
+		}
 
 		if tracker.Current() != 0 {
 			t.Errorf("expected 0 bytes after close, got %d", tracker.Current())
@@ -803,7 +947,10 @@ func BenchmarkMemoryTracker_Allocate(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		tracker.Allocate(100, "test", "")
+		_, err := tracker.Allocate(100, "test", "")
+		if err != nil {
+			b.Errorf("Allocate failed: %v", err)
+		}
 	}
 }
 
@@ -812,8 +959,14 @@ func BenchmarkMemoryTracker_AllocateDealloc(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		id, _ := tracker.Allocate(100, "test", "")
-		tracker.Deallocate(id)
+		id, err := tracker.Allocate(100, "test", "")
+		if err != nil {
+			b.Errorf("Allocate failed: %v", err)
+		}
+		err = tracker.Deallocate(id)
+		if err != nil {
+			b.Errorf("Deallocate failed: %v", err)
+		}
 	}
 }
 
@@ -823,15 +976,24 @@ func BenchmarkMemoryTracker_Concurrent(b *testing.B) {
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			id, _ := tracker.Allocate(100, "test", "")
-			tracker.Deallocate(id)
+			id, err := tracker.Allocate(100, "test", "")
+			if err != nil {
+				b.Errorf("Allocate failed: %v", err)
+			}
+			err = tracker.Deallocate(id)
+			if err != nil {
+				b.Errorf("Deallocate failed: %v", err)
+			}
 		}
 	})
 }
 
 func BenchmarkMemoryTracker_Current(b *testing.B) {
 	tracker := NewMemoryTracker(0)
-	tracker.Allocate(1000, "test", "")
+	_, err := tracker.Allocate(1000, "test", "")
+	if err != nil {
+		b.Errorf("Allocate failed: %v", err)
+	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

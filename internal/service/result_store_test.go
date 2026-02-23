@@ -66,7 +66,7 @@ func TestResultStore_Get(t *testing.T) {
 	defer rs.Close()
 
 	result := createTestAlgoResult("v1", AlgoKindComponents, 100)
-	rs.Store(result)
+	rs.Store(result) //nolint:errcheck // test setup
 
 	// Get should work and pin the result
 	retrieved, err := rs.Get(result.ID)
@@ -107,7 +107,7 @@ func TestResultStore_CacheKey(t *testing.T) {
 
 	result := NewAlgoResult(versionID, algoKind, paramsHash)
 	result.MembershipU32 = make([]uint32, 100)
-	rs.Store(result)
+	rs.Store(result) //nolint:errcheck // test setup
 
 	// Get by cache key should work
 	retrieved, found := rs.GetByKey(versionID, algoKind, paramsHash)
@@ -223,7 +223,7 @@ func TestResultStore_TTLCleanup(t *testing.T) {
 	defer rs.Close()
 
 	result := createTestAlgoResult("v1", AlgoKindComponents, 100)
-	rs.Store(result)
+	rs.Store(result) //nolint:errcheck // test setup
 
 	// Result should exist initially
 	if rs.Count() != 1 {
@@ -250,21 +250,21 @@ func TestResultStore_PinnedNotEvicted(t *testing.T) {
 	// Add 2 results
 	r1 := createTestAlgoResult("v1", AlgoKindComponents, 100)
 	r2 := createTestAlgoResult("v2", AlgoKindComponents, 100)
-	rs.Store(r1)
+	rs.Store(r1) //nolint:errcheck // test setup
 	time.Sleep(time.Millisecond)
-	rs.Store(r2)
+	rs.Store(r2) //nolint:errcheck // test setup
 
 	// Pin r1 (the older one)
 	pinned1, _ := rs.Get(r1.ID)
 
 	// Add 3rd result - this fills up
 	r3 := createTestAlgoResult("v3", AlgoKindComponents, 100)
-	rs.Store(r3)
+	rs.Store(r3) //nolint:errcheck // test setup
 	time.Sleep(time.Millisecond)
 
 	// Now add 4th - should evict r2 (unpinned, older than r3)
 	r4 := createTestAlgoResult("v4", AlgoKindComponents, 100)
-	rs.Store(r4)
+	rs.Store(r4) //nolint:errcheck // test setup
 
 	// r1 should still exist (pinned)
 	retrieved1, err := rs.Get(r1.ID)
@@ -283,7 +283,7 @@ func TestResultStore_PinnedNotCleanedByTTL(t *testing.T) {
 	defer rs.Close()
 
 	result := createTestAlgoResult("v1", AlgoKindComponents, 100)
-	rs.Store(result)
+	rs.Store(result) //nolint:errcheck // test setup
 
 	// Pin the result
 	pinned, _ := rs.Get(result.ID)
@@ -316,7 +316,7 @@ func TestResultStore_ConcurrentAccess(t *testing.T) {
 	// Pre-populate
 	for i := 0; i < 10; i++ {
 		result := createTestAlgoResult(fmt.Sprintf("v%d", i), AlgoKindComponents, 100)
-		rs.Store(result)
+		rs.Store(result) //nolint:errcheck // test setup
 	}
 
 	var wg sync.WaitGroup
@@ -399,8 +399,8 @@ func TestResultStore_Stats(t *testing.T) {
 	// Add results
 	r1 := createTestAlgoResult("v1", AlgoKindComponents, 100)
 	r2 := createTestAlgoResult("v2", AlgoKindShortestPath, 200)
-	rs.Store(r1)
-	rs.Store(r2)
+	rs.Store(r1) //nolint:errcheck // test setup
+	rs.Store(r2) //nolint:errcheck // test setup
 
 	stats = rs.Stats()
 	if stats.TotalItems != 2 {
@@ -417,7 +417,7 @@ func TestResultStore_Delete(t *testing.T) {
 	defer rs.Close()
 
 	result := createTestAlgoResult("v1", AlgoKindComponents, 100)
-	rs.Store(result)
+	rs.Store(result) //nolint:errcheck // test setup
 
 	memBefore := rs.TotalMemory()
 
@@ -449,7 +449,7 @@ func TestResultStore_Delete_Pinned(t *testing.T) {
 	defer rs.Close()
 
 	result := createTestAlgoResult("v1", AlgoKindComponents, 100)
-	rs.Store(result)
+	rs.Store(result) //nolint:errcheck // test setup
 
 	// Pin the result
 	pinned, _ := rs.Get(result.ID)

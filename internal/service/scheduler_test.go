@@ -19,7 +19,7 @@ func TestScheduler_Basic(t *testing.T) {
 	}
 
 	scheduler := NewScheduler(config, logger)
-	defer scheduler.Shutdown(context.Background())
+	defer scheduler.Shutdown(context.Background()) //nolint:errcheck // test teardown //nolint:errcheck // test teardown
 
 	// Create a simple job
 	executed := false
@@ -63,7 +63,7 @@ func TestScheduler_ParallelLimit(t *testing.T) {
 	}
 
 	scheduler := NewScheduler(config, logger)
-	defer scheduler.Shutdown(context.Background())
+	defer scheduler.Shutdown(context.Background()) //nolint:errcheck // test teardown //nolint:errcheck // test teardown
 
 	var maxConcurrent int32
 	var currentConcurrent int32
@@ -122,7 +122,7 @@ func TestScheduler_QueueFull(t *testing.T) {
 	}
 
 	scheduler := NewScheduler(config, logger)
-	defer scheduler.Shutdown(context.Background())
+	defer scheduler.Shutdown(context.Background()) //nolint:errcheck // test teardown
 
 	// Block the scheduler with a job that signals when it starts
 	blockCh := make(chan struct{})
@@ -176,7 +176,7 @@ func TestScheduler_Priority(t *testing.T) {
 	}
 
 	scheduler := NewScheduler(config, logger)
-	defer scheduler.Shutdown(context.Background())
+	defer scheduler.Shutdown(context.Background()) //nolint:errcheck // test teardown
 
 	// Block the scheduler with a job that signals when it starts
 	blockCh := make(chan struct{})
@@ -264,7 +264,7 @@ func TestScheduler_CancelJob(t *testing.T) {
 	}
 
 	scheduler := NewScheduler(config, logger)
-	defer scheduler.Shutdown(context.Background())
+	defer scheduler.Shutdown(context.Background()) //nolint:errcheck // test teardown
 
 	// Create a job that signals when it starts and waits for context cancellation
 	startedCh := make(chan struct{})
@@ -316,7 +316,7 @@ func TestScheduler_TenantJobCount(t *testing.T) {
 	}
 
 	scheduler := NewScheduler(config, logger)
-	defer scheduler.Shutdown(context.Background())
+	defer scheduler.Shutdown(context.Background()) //nolint:errcheck // test teardown
 
 	// Create jobs for two tenants with explicit start signaling
 	blockCh := make(chan struct{})
@@ -383,7 +383,7 @@ func TestScheduler_RunSync(t *testing.T) {
 	}
 
 	scheduler := NewScheduler(config, logger)
-	defer scheduler.Shutdown(context.Background())
+	defer scheduler.Shutdown(context.Background()) //nolint:errcheck // test teardown
 
 	// Run synchronously
 	result, err := scheduler.RunSync(context.Background(), func(ctx context.Context) (*AlgoResult, error) {
@@ -408,7 +408,7 @@ func TestScheduler_Acquire(t *testing.T) {
 	}
 
 	scheduler := NewScheduler(config, logger)
-	defer scheduler.Shutdown(context.Background())
+	defer scheduler.Shutdown(context.Background()) //nolint:errcheck // test teardown
 
 	// Acquire a slot
 	release, err := scheduler.Acquire(context.Background())
@@ -443,7 +443,7 @@ func TestScheduler_Stats(t *testing.T) {
 	}
 
 	scheduler := NewScheduler(config, logger)
-	defer scheduler.Shutdown(context.Background())
+	defer scheduler.Shutdown(context.Background()) //nolint:errcheck // test teardown
 
 	// Check initial stats
 	stats := scheduler.Stats()

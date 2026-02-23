@@ -85,7 +85,7 @@ func ComputeCloseness(
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
-	default:
+	default: //nolint:revive // non-blocking context check
 	}
 
 	// Get edge weights if specified
