@@ -58,11 +58,8 @@ func ComputeKCore(
 	ctx context.Context,
 	version *GraphVersion,
 	view *View,
-	config *KCoreConfig,
 	shimCfg *KCoreShimConfig,
 ) (*KCoreResult, error) {
-	// config is accepted for API consistency; k-core options may be used in future
-
 	// K-core requires the igraph shim
 	if shimCfg == nil || shimCfg.ShimGraph == nil {
 		return nil, fmt.Errorf("k-core computation requires igraph shim")

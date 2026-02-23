@@ -112,8 +112,7 @@ func TestComputeKCore_Basic(t *testing.T) {
 	defer g.Close()
 	shimCfg := &KCoreShimConfig{ShimGraph: g}
 
-	config := DefaultKCoreConfig()
-	result, err := ComputeKCore(ctx, version, nil, config, shimCfg)
+	result, err := ComputeKCore(ctx, version, nil, shimCfg)
 	if err != nil {
 		t.Fatalf("ComputeKCore failed: %v", err)
 	}
@@ -142,8 +141,7 @@ func TestComputeKCore_Chain(t *testing.T) {
 	defer g.Close()
 	shimCfg := &KCoreShimConfig{ShimGraph: g}
 
-	config := DefaultKCoreConfig()
-	result, err := ComputeKCore(ctx, version, nil, config, shimCfg)
+	result, err := ComputeKCore(ctx, version, nil, shimCfg)
 	if err != nil {
 		t.Fatalf("ComputeKCore failed: %v", err)
 	}
@@ -170,8 +168,7 @@ func TestComputeKCore_Triangle(t *testing.T) {
 	defer g.Close()
 	shimCfg := &KCoreShimConfig{ShimGraph: g}
 
-	config := DefaultKCoreConfig()
-	result, err := ComputeKCore(ctx, version, nil, config, shimCfg)
+	result, err := ComputeKCore(ctx, version, nil, shimCfg)
 	if err != nil {
 		t.Fatalf("ComputeKCore failed: %v", err)
 	}
@@ -192,8 +189,7 @@ func TestComputeKCore_NoShim(t *testing.T) {
 	version := createTestGraphForKCore()
 	ctx := context.Background()
 
-	config := DefaultKCoreConfig()
-	_, err := ComputeKCore(ctx, version, nil, config, nil)
+	_, err := ComputeKCore(ctx, version, nil, nil)
 	if err == nil {
 		t.Error("expected error when shim config is nil")
 	}
@@ -211,8 +207,7 @@ func TestComputeKCore_ContextCanceled(t *testing.T) {
 	defer g.Close()
 	shimCfg := &KCoreShimConfig{ShimGraph: g}
 
-	config := DefaultKCoreConfig()
-	_, err := ComputeKCore(ctx, version, nil, config, shimCfg)
+	_, err := ComputeKCore(ctx, version, nil, shimCfg)
 	if err == nil {
 		t.Error("expected error when context is canceled")
 	}
@@ -228,8 +223,7 @@ func TestKCoreResult_GetKCoreMembers(t *testing.T) {
 	defer g.Close()
 	shimCfg := &KCoreShimConfig{ShimGraph: g}
 
-	config := DefaultKCoreConfig()
-	result, err := ComputeKCore(ctx, version, nil, config, shimCfg)
+	result, err := ComputeKCore(ctx, version, nil, shimCfg)
 	if err != nil {
 		t.Fatalf("ComputeKCore failed: %v", err)
 	}
@@ -263,8 +257,7 @@ func TestKCoreResult_GetVertexCoreness(t *testing.T) {
 	defer g.Close()
 	shimCfg := &KCoreShimConfig{ShimGraph: g}
 
-	config := DefaultKCoreConfig()
-	result, err := ComputeKCore(ctx, version, nil, config, shimCfg)
+	result, err := ComputeKCore(ctx, version, nil, shimCfg)
 	if err != nil {
 		t.Fatalf("ComputeKCore failed: %v", err)
 	}
@@ -295,8 +288,7 @@ func TestKCoreResult_GetCoreShells(t *testing.T) {
 	defer g.Close()
 	shimCfg := &KCoreShimConfig{ShimGraph: g}
 
-	config := DefaultKCoreConfig()
-	result, err := ComputeKCore(ctx, version, nil, config, shimCfg)
+	result, err := ComputeKCore(ctx, version, nil, shimCfg)
 	if err != nil {
 		t.Fatalf("ComputeKCore failed: %v", err)
 	}

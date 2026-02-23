@@ -318,10 +318,9 @@ func (h *GraphEngineHandler) PublishBuild(ctx context.Context, req *gepb.Publish
 	// Compute k-core if requested
 	if shimGraph != nil && artifacts != nil && artifacts.GetComputeKcore() {
 		h.logger.Info("computing k-core artifact", "version_id", versionID)
-		kcoreConfig := service.DefaultKCoreConfig()
 		kcoreShimCfg := &service.KCoreShimConfig{ShimGraph: shimGraph}
 
-		kcoreResult, err := service.ComputeKCore(ctx, version, nil, kcoreConfig, kcoreShimCfg)
+		kcoreResult, err := service.ComputeKCore(ctx, version, nil, kcoreShimCfg)
 		if err != nil {
 			h.logger.Error("failed to compute k-core", "error", err)
 		} else {
@@ -1297,11 +1296,6 @@ func (h *GraphEngineHandler) Run(ctx context.Context, req *gepb.RunRequest) (*ge
 		defer shimGraph.Close()
 		kcoreShimCfg := &service.KCoreShimConfig{ShimGraph: shimGraph}
 
-		// Build k-core config
-		kcoreConfig := &service.KCoreConfig{
-			K: kcoreSpec.GetK(),
-		}
-
 		// Compute k-core
 		computeSpan := service.NewTraceSpan("compute")
 		computeStart := time.Now()
@@ -1309,7 +1303,6 @@ func (h *GraphEngineHandler) Run(ctx context.Context, req *gepb.RunRequest) (*ge
 			ctx,
 			version,
 			view,
-			kcoreConfig,
 			kcoreShimCfg,
 		)
 		computeSpan.End()
