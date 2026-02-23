@@ -3,6 +3,7 @@ package shim
 import (
 	"errors"
 	"fmt"
+	"log"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -429,14 +430,18 @@ func NewTrackedGraph(tracker *MemoryTracker, n uint32, src, dst []uint32, direct
 	g, err := NewGraph(n, src, dst, directed)
 	if err != nil {
 		// Release the allocation on failure
-		tracker.Deallocate(allocID)
+		if deallocErr := tracker.Deallocate(allocID); deallocErr != nil {
+			log.Printf("Deallocate failed: %v", deallocErr)
+		}
 		return nil, err
 	}
 
 	// Update with actual memory size
 	actualSize := g.MemoryBytes()
 	if actualSize != estimatedSize {
-		tracker.Deallocate(allocID)
+		if deallocErr := tracker.Deallocate(allocID); deallocErr != nil {
+			log.Printf("Deallocate failed: %v", deallocErr)
+		}
 		allocID, err = tracker.Allocate(actualSize, "graph", "")
 		if err != nil {
 			g.Close()
@@ -455,7 +460,9 @@ func NewTrackedGraph(tracker *MemoryTracker, n uint32, src, dst []uint32, direct
 func (tg *TrackedGraph) Close() {
 	if tg.Graph != nil {
 		tg.Graph.Close()
-		tg.tracker.Deallocate(tg.allocID)
+		if err := tg.tracker.Deallocate(tg.allocID); err != nil {
+			log.Printf("Deallocate failed: %v", err)
+		}
 		tg.Graph = nil
 	}
 }
@@ -486,16 +493,20 @@ func (tg *TrackedGraph) NewTrackedViewFromEdgeMask(edgeMask []byte) (*TrackedVie
 		return nil, err
 	}
 
-	v, err := tg.Graph.NewViewFromEdgeMask(edgeMask)
+	v, err := tg.Graph.NewViewFromEdgeMask(edgeMask) //nolint:staticcheck // keep explicit Graph selector
 	if err != nil {
-		tg.tracker.Deallocate(allocID)
+		if deallocErr := tg.tracker.Deallocate(allocID); deallocErr != nil {
+			log.Printf("Deallocate failed: %v", deallocErr)
+		}
 		return nil, err
 	}
 
 	// Update with actual size
 	actualSize := v.MemoryBytes()
 	if actualSize != estimatedSize {
-		tg.tracker.Deallocate(allocID)
+		if deallocErr := tg.tracker.Deallocate(allocID); deallocErr != nil {
+			log.Printf("Deallocate failed: %v", deallocErr)
+		}
 		allocID, err = tg.tracker.Allocate(actualSize, "view", "")
 		if err != nil {
 			v.Close()
@@ -514,7 +525,9 @@ func (tg *TrackedGraph) NewTrackedViewFromEdgeMask(edgeMask []byte) (*TrackedVie
 func (tv *TrackedView) Close() {
 	if tv.View != nil {
 		tv.View.Close()
-		tv.tracker.Deallocate(tv.allocID)
+		if err := tv.tracker.Deallocate(tv.allocID); err != nil {
+			log.Printf("Deallocate failed: %v", err)
+		}
 		tv.View = nil
 	}
 }
@@ -531,6 +544,8 @@ type TrackedResult struct {
 }
 
 // trackResult wraps a result with memory tracking.
+//
+//nolint:unused // reserved for future use
 func trackResult(tracker *MemoryTracker, r *Result) (*TrackedResult, error) {
 	size := r.MemoryBytes()
 
@@ -551,7 +566,9 @@ func trackResult(tracker *MemoryTracker, r *Result) (*TrackedResult, error) {
 func (tr *TrackedResult) Close() {
 	if tr.Result != nil {
 		tr.Result.Close()
-		tr.tracker.Deallocate(tr.allocID)
+		if err := tr.tracker.Deallocate(tr.allocID); err != nil {
+			log.Printf("Deallocate failed: %v", err)
+		}
 		tr.Result = nil
 	}
 }
@@ -572,6 +589,8 @@ func estimateGraphMemory(vertices uint32, edges uint64) uint64 {
 }
 
 // estimateResultMemory estimates the memory footprint of a result.
+//
+//nolint:unused // reserved for future use
 func estimateResultMemory(numBuffers int, totalElements uint64, avgElemSize uint64) uint64 {
 	const bufferOverhead = 64 // Per-buffer overhead
 	return uint64(numBuffers)*bufferOverhead + totalElements*avgElemSize

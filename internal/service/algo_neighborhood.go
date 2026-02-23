@@ -147,7 +147,7 @@ func ComputeNeighborhood(
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
-	default:
+	default: //nolint:revive // non-blocking context check
 	}
 
 	// Use igraph shim for neighborhood computation

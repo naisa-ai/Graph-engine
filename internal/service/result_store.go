@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 	"unsafe"
@@ -352,7 +353,9 @@ func (rs *ResultStore) GetByKey(versionID string, algoKind AlgoKind, paramsHash 
 func HashParams(params ...interface{}) string {
 	h := sha256.New()
 	for _, p := range params {
-		h.Write([]byte(fmt.Sprintf("%v", p)))
+		if _, err := fmt.Fprintf(h, "%v", p); err != nil {
+			slog.Default().Error("hash write failed", "error", err)
+		}
 	}
 	return hex.EncodeToString(h.Sum(nil))[:16]
 }

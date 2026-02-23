@@ -179,7 +179,7 @@ func ComputeCommunities(
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
-	default:
+	default: //nolint:revive // non-blocking context check
 	}
 
 	// Compute communities using the shim
