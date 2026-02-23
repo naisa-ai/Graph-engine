@@ -74,6 +74,8 @@ func createSingleCliqueGraph() *GraphVersion {
 
 // createStarGraphForCommunities creates a star graph with hub and spokes.
 // Graph structure: Hub (1) connected to spokes (2, 3, 4, 5, 6)
+//
+//nolint:unused // test helper for future community tests
 func createStarGraphForCommunities() *GraphVersion {
 	vertices := []uint64{1, 2, 3, 4, 5, 6}
 	src := []uint64{1, 1, 1, 1, 1}

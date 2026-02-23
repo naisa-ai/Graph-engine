@@ -52,7 +52,7 @@ build-local: ## Build locally (requires igraph on host)
 	@echo "Building $(BINARY_NAME) locally..."
 	@mkdir -p $(BUILD_DIR)
 	CGO_ENABLED=1 \
-	CGO_CFLAGS="$$(pkg-config --cflags igraph)" \
+	CGO_CFLAGS="-I$$(pkg-config --variable=includedir igraph) $$(pkg-config --cflags igraph)" \
 	CGO_LDFLAGS="$$(pkg-config --libs igraph)" \
 	go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/graph-engined
 	@echo "Build complete: $(BUILD_DIR)/$(BINARY_NAME)"
@@ -86,7 +86,7 @@ test-local: ## Run unit tests locally (requires igraph on host)
 	@pkg-config --exists igraph || (echo "ERROR: igraph not found. Use 'make test' to test via Docker." && exit 1)
 	@echo "Running unit tests locally..."
 	CGO_ENABLED=1 \
-	CGO_CFLAGS="$$(pkg-config --cflags igraph)" \
+	CGO_CFLAGS="-I$$(pkg-config --variable=includedir igraph) $$(pkg-config --cflags igraph)" \
 	CGO_LDFLAGS="$$(pkg-config --libs igraph)" \
 	go test -v -race ./...
 

@@ -52,7 +52,7 @@ func TestIntegrationFullFlow(t *testing.T) {
 
 	go func() {
 		if err := server.ServeListener(lis); err != nil {
-			// Server stopped
+			_ = err // server stopped
 		}
 	}()
 	defer server.Stop()
@@ -65,7 +65,7 @@ func TestIntegrationFullFlow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to connect: %v", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	client := gepb.NewGraphEngineClient(conn)
 	opsClient := gepb.NewGraphEngineOpsClient(conn)

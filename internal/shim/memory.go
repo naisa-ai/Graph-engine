@@ -429,14 +429,14 @@ func NewTrackedGraph(tracker *MemoryTracker, n uint32, src, dst []uint32, direct
 	g, err := NewGraph(n, src, dst, directed)
 	if err != nil {
 		// Release the allocation on failure
-		tracker.Deallocate(allocID)
+		_ = tracker.Deallocate(allocID)
 		return nil, err
 	}
 
 	// Update with actual memory size
 	actualSize := g.MemoryBytes()
 	if actualSize != estimatedSize {
-		tracker.Deallocate(allocID)
+		_ = tracker.Deallocate(allocID)
 		allocID, err = tracker.Allocate(actualSize, "graph", "")
 		if err != nil {
 			g.Close()
@@ -455,7 +455,7 @@ func NewTrackedGraph(tracker *MemoryTracker, n uint32, src, dst []uint32, direct
 func (tg *TrackedGraph) Close() {
 	if tg.Graph != nil {
 		tg.Graph.Close()
-		tg.tracker.Deallocate(tg.allocID)
+		_ = tg.tracker.Deallocate(tg.allocID)
 		tg.Graph = nil
 	}
 }
@@ -486,16 +486,16 @@ func (tg *TrackedGraph) NewTrackedViewFromEdgeMask(edgeMask []byte) (*TrackedVie
 		return nil, err
 	}
 
-	v, err := tg.Graph.NewViewFromEdgeMask(edgeMask)
+	v, err := tg.NewViewFromEdgeMask(edgeMask)
 	if err != nil {
-		tg.tracker.Deallocate(allocID)
+		_ = tg.tracker.Deallocate(allocID)
 		return nil, err
 	}
 
 	// Update with actual size
 	actualSize := v.MemoryBytes()
 	if actualSize != estimatedSize {
-		tg.tracker.Deallocate(allocID)
+		_ = tg.tracker.Deallocate(allocID)
 		allocID, err = tg.tracker.Allocate(actualSize, "view", "")
 		if err != nil {
 			v.Close()
@@ -514,7 +514,7 @@ func (tg *TrackedGraph) NewTrackedViewFromEdgeMask(edgeMask []byte) (*TrackedVie
 func (tv *TrackedView) Close() {
 	if tv.View != nil {
 		tv.View.Close()
-		tv.tracker.Deallocate(tv.allocID)
+		_ = tv.tracker.Deallocate(tv.allocID)
 		tv.View = nil
 	}
 }
@@ -531,6 +531,8 @@ type TrackedResult struct {
 }
 
 // trackResult wraps a result with memory tracking.
+//
+//nolint:unused // reserved for future use when results are tracked
 func trackResult(tracker *MemoryTracker, r *Result) (*TrackedResult, error) {
 	size := r.MemoryBytes()
 
@@ -551,7 +553,7 @@ func trackResult(tracker *MemoryTracker, r *Result) (*TrackedResult, error) {
 func (tr *TrackedResult) Close() {
 	if tr.Result != nil {
 		tr.Result.Close()
-		tr.tracker.Deallocate(tr.allocID)
+		_ = tr.tracker.Deallocate(tr.allocID)
 		tr.Result = nil
 	}
 }
@@ -572,6 +574,8 @@ func estimateGraphMemory(vertices uint32, edges uint64) uint64 {
 }
 
 // estimateResultMemory estimates the memory footprint of a result.
+//
+//nolint:unused // reserved for future use
 func estimateResultMemory(numBuffers int, totalElements uint64, avgElemSize uint64) uint64 {
 	const bufferOverhead = 64 // Per-buffer overhead
 	return uint64(numBuffers)*bufferOverhead + totalElements*avgElemSize

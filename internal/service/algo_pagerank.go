@@ -95,6 +95,7 @@ func ComputePageRank(
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	default:
+		_ = 0 // non-blocking check
 	}
 
 	// Get edge weights if specified

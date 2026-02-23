@@ -76,7 +76,7 @@ func ComputeKShortestPaths(
 		config = DefaultKSPConfig(3)
 	}
 	if config.K <= 0 {
-		return nil, fmt.Errorf("K must be positive")
+		return nil, fmt.Errorf("k must be positive")
 	}
 	if config.MaxCandidates <= 0 {
 		config.MaxCandidates = 10 * config.K

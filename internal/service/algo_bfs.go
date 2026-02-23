@@ -138,6 +138,7 @@ func ComputeBFS(
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	default:
+		_ = 0 // non-blocking check
 	}
 
 	// Use igraph shim for BFS computation

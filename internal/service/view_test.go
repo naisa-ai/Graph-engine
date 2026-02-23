@@ -183,7 +183,7 @@ func TestView_GetEdges(t *testing.T) {
 	view := NewView(version)
 
 	// Induce a smaller set
-	view.ApplyInducedVertices([]uint64{100, 101, 103, 104})
+	_ = view.ApplyInducedVertices([]uint64{100, 101, 103, 104})
 	view.updateCounts()
 
 	src, dst := view.GetEdges()

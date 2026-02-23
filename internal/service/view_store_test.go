@@ -46,7 +46,7 @@ func TestViewStore_Get(t *testing.T) {
 
 	version := createTestGraphVersionForView()
 	view := NewView(version)
-	vs.Store(view)
+	_ = vs.Store(view)
 
 	// Get should work and pin the view
 	retrieved, err := vs.Get(view.ID)
@@ -79,7 +79,7 @@ func TestViewStore_GetByKey(t *testing.T) {
 	version := createTestGraphVersionForView()
 	view := NewView(version)
 	view.SpecHash = "testhash123"
-	vs.Store(view)
+	_ = vs.Store(view)
 
 	// Get by key should work
 	retrieved, found := vs.GetByKey(view.VersionID, view.SpecHash)
@@ -107,7 +107,7 @@ func TestViewStore_LRUEviction_MaxItems(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		view := NewView(version)
 		view.SpecHash = string(rune('a' + i))
-		vs.Store(view)
+		_ = vs.Store(view)
 		time.Sleep(time.Millisecond) // Ensure different access times
 	}
 
@@ -118,7 +118,7 @@ func TestViewStore_LRUEviction_MaxItems(t *testing.T) {
 	// Add 4th view should evict oldest
 	view4 := NewView(version)
 	view4.SpecHash = "d"
-	vs.Store(view4)
+	_ = vs.Store(view4)
 
 	if vs.Count() != 3 {
 		t.Errorf("expected Count=3 after eviction, got %d", vs.Count())
@@ -138,7 +138,7 @@ func TestViewStore_LRUEviction_MaxMemory(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		v := NewView(version)
 		v.SpecHash = string(rune('a' + i))
-		vs.Store(v)
+		_ = vs.Store(v)
 		time.Sleep(time.Millisecond)
 	}
 
@@ -156,19 +156,19 @@ func TestViewStore_PinnedNotEvicted(t *testing.T) {
 	// Add first view and pin it
 	view1 := NewView(version)
 	view1.SpecHash = "pinned"
-	vs.Store(view1)
+	_ = vs.Store(view1)
 	retrieved1, _ := vs.Get(view1.ID) // This pins view1
 	defer retrieved1.Unpin()
 
 	// Add second view (unpinned)
 	view2 := NewView(version)
 	view2.SpecHash = "unpinned"
-	vs.Store(view2)
+	_ = vs.Store(view2)
 
 	// Add third view - should evict view2 (unpinned), not view1 (pinned)
 	view3 := NewView(version)
 	view3.SpecHash = "new"
-	vs.Store(view3)
+	_ = vs.Store(view3)
 
 	// view1 should still exist
 	_, err := vs.Get(view1.ID)
@@ -182,7 +182,7 @@ func TestViewStore_Stats(t *testing.T) {
 
 	version := createTestGraphVersionForView()
 	view := NewView(version)
-	vs.Store(view)
+	_ = vs.Store(view)
 
 	stats := vs.Stats()
 
@@ -205,7 +205,7 @@ func TestViewStore_Delete(t *testing.T) {
 
 	version := createTestGraphVersionForView()
 	view := NewView(version)
-	vs.Store(view)
+	_ = vs.Store(view)
 
 	// Delete should succeed
 	err := vs.Delete(view.ID)
@@ -229,7 +229,7 @@ func TestViewStore_DeletePinned(t *testing.T) {
 
 	version := createTestGraphVersionForView()
 	view := NewView(version)
-	vs.Store(view)
+	_ = vs.Store(view)
 
 	// Pin the view
 	retrieved, _ := vs.Get(view.ID)
@@ -259,7 +259,7 @@ func TestViewStore_ListViewIDs(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		view := NewView(version)
 		view.SpecHash = string(rune('a' + i))
-		vs.Store(view)
+		_ = vs.Store(view)
 		ids[view.ID] = true
 	}
 

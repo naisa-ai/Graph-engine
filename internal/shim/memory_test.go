@@ -56,19 +56,19 @@ func TestMemoryTracker_Allocate(t *testing.T) {
 	t.Run("allocation updates peak", func(t *testing.T) {
 		tracker := NewMemoryTracker(0)
 
-		tracker.Allocate(1000, "test", "")
+		_, _ = tracker.Allocate(1000, "test", "")
 		if tracker.Peak() != 1000 {
 			t.Errorf("expected peak 1000, got %d", tracker.Peak())
 		}
 
-		tracker.Allocate(500, "test", "")
+		_, _ = tracker.Allocate(500, "test", "")
 		if tracker.Peak() != 1500 {
 			t.Errorf("expected peak 1500, got %d", tracker.Peak())
 		}
 
 		// Deallocate and allocate less - peak should stay
-		tracker.DeallocateBySize(500, "test")
-		tracker.Allocate(100, "test", "")
+		_ = tracker.DeallocateBySize(500, "test")
+		_, _ = tracker.Allocate(100, "test", "")
 
 		if tracker.Peak() != 1500 {
 			t.Errorf("peak should remain 1500, got %d", tracker.Peak())
@@ -86,7 +86,7 @@ func TestMemoryTracker_Allocate(t *testing.T) {
 			callbackInfo = info
 		}, nil)
 
-		tracker.Allocate(500, "graph", "test-label")
+		_, _ = tracker.Allocate(500, "graph", "test-label")
 
 		if !callbackCalled {
 			t.Error("allocation callback should have been called")
@@ -122,7 +122,7 @@ func TestMemoryTracker_Deallocate(t *testing.T) {
 		id1, _ := tracker.Allocate(100, "test", "")
 		id2, _ := tracker.Allocate(200, "test", "")
 
-		tracker.Deallocate(id1)
+		_ = tracker.Deallocate(id1)
 
 		stats := tracker.Stats()
 		if stats.CurrentBytes != 200 {
@@ -135,7 +135,7 @@ func TestMemoryTracker_Deallocate(t *testing.T) {
 			t.Errorf("expected 1 active allocation, got %d", stats.ActiveAllocations)
 		}
 
-		tracker.Deallocate(id2)
+		_ = tracker.Deallocate(id2)
 		stats = tracker.Stats()
 		if stats.CurrentBytes != 0 {
 			t.Errorf("expected current 0, got %d", stats.CurrentBytes)
@@ -151,7 +151,7 @@ func TestMemoryTracker_Deallocate(t *testing.T) {
 		})
 
 		id, _ := tracker.Allocate(500, "test", "")
-		tracker.Deallocate(id)
+		_ = tracker.Deallocate(id)
 
 		if !callbackCalled {
 			t.Error("deallocation callback should have been called")
@@ -161,9 +161,9 @@ func TestMemoryTracker_Deallocate(t *testing.T) {
 	t.Run("deallocate by size", func(t *testing.T) {
 		tracker := NewMemoryTracker(0)
 
-		tracker.Allocate(100, "graph", "")
-		tracker.Allocate(200, "view", "")
-		tracker.Allocate(100, "result", "")
+		_, _ = tracker.Allocate(100, "graph", "")
+		_, _ = tracker.Allocate(200, "view", "")
+		_, _ = tracker.Allocate(100, "result", "")
 
 		err := tracker.DeallocateBySize(200, "view")
 		if err != nil {
@@ -239,7 +239,7 @@ func TestMemoryTracker_Limits(t *testing.T) {
 			t.Error("should be able to allocate 500")
 		}
 
-		tracker.Allocate(600, "test", "")
+		_, _ = tracker.Allocate(600, "test", "")
 
 		if tracker.CanAllocate(500) {
 			t.Error("should not be able to allocate 500 more")
@@ -257,7 +257,7 @@ func TestMemoryTracker_Limits(t *testing.T) {
 			t.Errorf("expected 1000 available, got %d", tracker.Available())
 		}
 
-		tracker.Allocate(300, "test", "")
+		_, _ = tracker.Allocate(300, "test", "")
 		if tracker.Available() != 700 {
 			t.Errorf("expected 700 available, got %d", tracker.Available())
 		}
@@ -280,7 +280,7 @@ func TestMemoryTracker_Limits(t *testing.T) {
 	t.Run("set limit", func(t *testing.T) {
 		tracker := NewMemoryTracker(2000)
 
-		tracker.Allocate(500, "test", "")
+		_, _ = tracker.Allocate(500, "test", "")
 
 		// Can reduce limit above current usage
 		err := tracker.SetLimit(1000)
@@ -305,7 +305,7 @@ func TestMemoryTracker_LeakDetect(t *testing.T) {
 		tracker := NewMemoryTracker(0)
 
 		id, _ := tracker.Allocate(100, "test", "")
-		tracker.Deallocate(id)
+		_ = tracker.Deallocate(id)
 
 		report := tracker.CheckLeaks(0)
 		if report.HasLeaks {
@@ -316,13 +316,13 @@ func TestMemoryTracker_LeakDetect(t *testing.T) {
 	t.Run("detect old allocations", func(t *testing.T) {
 		tracker := NewMemoryTracker(0)
 
-		tracker.Allocate(100, "test", "old1")
-		tracker.Allocate(200, "test", "old2")
+		_, _ = tracker.Allocate(100, "test", "old1")
+		_, _ = tracker.Allocate(200, "test", "old2")
 
 		// Wait a bit
 		time.Sleep(50 * time.Millisecond)
 
-		tracker.Allocate(300, "test", "new")
+		_, _ = tracker.Allocate(300, "test", "new")
 
 		report := tracker.CheckLeaks(40 * time.Millisecond)
 		if !report.HasLeaks {
@@ -339,7 +339,7 @@ func TestMemoryTracker_LeakDetect(t *testing.T) {
 	t.Run("leak report details", func(t *testing.T) {
 		tracker := NewMemoryTracker(0)
 
-		tracker.Allocate(100, "graph", "leaked-graph")
+		_, _ = tracker.Allocate(100, "graph", "leaked-graph")
 		time.Sleep(20 * time.Millisecond)
 
 		report := tracker.CheckLeaks(10 * time.Millisecond)
@@ -373,7 +373,7 @@ func TestMemoryTracker_Concurrent(t *testing.T) {
 			go func() {
 				defer wg.Done()
 				for j := 0; j < allocsPerGoroutine; j++ {
-					tracker.Allocate(10, "test", "")
+					_, _ = tracker.Allocate(10, "test", "")
 				}
 			}()
 		}
@@ -497,8 +497,8 @@ func TestMemoryTracker_ZeroAlloc(t *testing.T) {
 	t.Run("zero size counts as allocation", func(t *testing.T) {
 		tracker := NewMemoryTracker(0)
 
-		tracker.Allocate(0, "test", "")
-		tracker.Allocate(0, "test", "")
+		_, _ = tracker.Allocate(0, "test", "")
+		_, _ = tracker.Allocate(0, "test", "")
 
 		stats := tracker.Stats()
 		if stats.TotalAllocations != 2 {
@@ -543,7 +543,7 @@ func TestMemoryTracker_DoubleDealloc(t *testing.T) {
 	t.Run("deallocate by size not found", func(t *testing.T) {
 		tracker := NewMemoryTracker(0)
 
-		tracker.Allocate(100, "graph", "")
+		_, _ = tracker.Allocate(100, "graph", "")
 
 		err := tracker.DeallocateBySize(100, "view") // wrong type
 		if !errors.Is(err, ErrAllocationNotFound) {
@@ -598,8 +598,8 @@ func TestMemoryTracker_Statistics(t *testing.T) {
 
 		id1, _ := tracker.Allocate(100, "graph", "")
 		id2, _ := tracker.Allocate(200, "view", "")
-		tracker.Deallocate(id1)
-		tracker.Allocate(50, "result", "")
+		_ = tracker.Deallocate(id1)
+		_, _ = tracker.Allocate(50, "result", "")
 
 		stats := tracker.Stats()
 
@@ -622,15 +622,15 @@ func TestMemoryTracker_Statistics(t *testing.T) {
 			t.Errorf("expected 2 active, got %d", stats.ActiveAllocations)
 		}
 
-		tracker.Deallocate(id2)
+		_ = tracker.Deallocate(id2)
 	})
 
 	t.Run("active allocations list", func(t *testing.T) {
 		tracker := NewMemoryTracker(0)
 
-		tracker.Allocate(100, "graph", "g1")
-		tracker.Allocate(200, "view", "v1")
-		tracker.Allocate(300, "graph", "g2")
+		_, _ = tracker.Allocate(100, "graph", "g1")
+		_, _ = tracker.Allocate(200, "view", "v1")
+		_, _ = tracker.Allocate(300, "graph", "g2")
 
 		allocs := tracker.ActiveAllocations()
 		if len(allocs) != 3 {
@@ -650,9 +650,9 @@ func TestMemoryTracker_Statistics(t *testing.T) {
 	t.Run("allocations by type", func(t *testing.T) {
 		tracker := NewMemoryTracker(0)
 
-		tracker.Allocate(100, "graph", "")
-		tracker.Allocate(200, "graph", "")
-		tracker.Allocate(300, "view", "")
+		_, _ = tracker.Allocate(100, "graph", "")
+		_, _ = tracker.Allocate(200, "graph", "")
+		_, _ = tracker.Allocate(300, "view", "")
 
 		count, bytes := tracker.CountByType("graph")
 		if count != 2 || bytes != 300 {
@@ -678,8 +678,8 @@ func TestMemoryTracker_Statistics(t *testing.T) {
 func TestMemoryTracker_Reset(t *testing.T) {
 	tracker := NewMemoryTracker(1000)
 
-	tracker.Allocate(100, "test", "")
-	tracker.Allocate(200, "test", "")
+	_, _ = tracker.Allocate(100, "test", "")
+	_, _ = tracker.Allocate(200, "test", "")
 
 	tracker.Reset()
 
@@ -728,7 +728,7 @@ func TestTrackedGraph(t *testing.T) {
 			t.Errorf("expected 1 graph, got %d", count)
 		}
 
-		tracker.Deallocate(id)
+		_ = tracker.Deallocate(id)
 
 		if tracker.Current() != 0 {
 			t.Errorf("expected 0 bytes after close, got %d", tracker.Current())
@@ -803,7 +803,7 @@ func BenchmarkMemoryTracker_Allocate(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		tracker.Allocate(100, "test", "")
+		_, _ = tracker.Allocate(100, "test", "")
 	}
 }
 
@@ -813,7 +813,7 @@ func BenchmarkMemoryTracker_AllocateDealloc(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		id, _ := tracker.Allocate(100, "test", "")
-		tracker.Deallocate(id)
+		_ = tracker.Deallocate(id)
 	}
 }
 
@@ -824,14 +824,14 @@ func BenchmarkMemoryTracker_Concurrent(b *testing.B) {
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
 			id, _ := tracker.Allocate(100, "test", "")
-			tracker.Deallocate(id)
+			_ = tracker.Deallocate(id)
 		}
 	})
 }
 
 func BenchmarkMemoryTracker_Current(b *testing.B) {
 	tracker := NewMemoryTracker(0)
-	tracker.Allocate(1000, "test", "")
+	_, _ = tracker.Allocate(1000, "test", "")
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

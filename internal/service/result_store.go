@@ -352,7 +352,7 @@ func (rs *ResultStore) GetByKey(versionID string, algoKind AlgoKind, paramsHash 
 func HashParams(params ...interface{}) string {
 	h := sha256.New()
 	for _, p := range params {
-		h.Write([]byte(fmt.Sprintf("%v", p)))
+		_, _ = fmt.Fprintf(h, "%v", p)
 	}
 	return hex.EncodeToString(h.Sum(nil))[:16]
 }

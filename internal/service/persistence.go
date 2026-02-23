@@ -359,14 +359,14 @@ func (pm *PersistenceManager) writeSnapshot(path string, snapshot *SnapshotData)
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	var writer io.Writer = file
 
 	// Add compression if configured
 	if pm.config.CompressSnapshots {
 		gzWriter := gzip.NewWriter(file)
-		defer gzWriter.Close()
+		defer func() { _ = gzWriter.Close() }()
 		writer = gzWriter
 	}
 
@@ -463,7 +463,7 @@ func (pm *PersistenceManager) readSnapshot(path string) (*SnapshotData, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	var reader io.Reader = file
 
@@ -473,7 +473,7 @@ func (pm *PersistenceManager) readSnapshot(path string) (*SnapshotData, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to create gzip reader: %w", err)
 		}
-		defer gzReader.Close()
+		defer func() { _ = gzReader.Close() }()
 		reader = gzReader
 	}
 
