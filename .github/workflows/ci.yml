@@ -102,10 +102,8 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
 
-      - name: Install protoc
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y protobuf-compiler
+      - name: Install pinned protoc (v33.1)
+        run: make install-protoc
 
       - name: Install protoc plugins
         run: |
