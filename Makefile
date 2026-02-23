@@ -1,6 +1,6 @@
 # Graph-engine Makefile
 
-.PHONY: proto build run test test-unit test-docker test-all test-shim clean lint help e2e e2e-grpc e2e-go e2e-py docker docker-base docker-base-rebuild e2e-base e2e-go-base e2e-py-base e2e-base-rebuild
+.PHONY: proto build run test test-unit test-docker test-all test-shim clean lint help e2e e2e-grpc e2e-go e2e-py docker docker-base docker-base-rebuild e2e-base e2e-go-base e2e-py-base e2e-base-rebuild install-protoc proto-deps
 
 # Binary name
 BINARY_NAME := graph-engined
@@ -15,6 +15,35 @@ SHIM_HDR := $(SHIM_DIR)/ge_igraph_shim.h
 # Proto paths
 PROTO_DIR := proto
 PROTO_FILES := $(shell find $(PROTO_DIR) -name "*.proto")
+
+# -----------------------------------------------------------------------------
+# Protoc compiler (pinned version for reproducible code generation)
+# https://github.com/protocolbuffers/protobuf/releases
+# -----------------------------------------------------------------------------
+PROTOC_VERSION := 33.1
+CACHE_DIR := .cache
+UNAME_S := $(shell uname -s)
+UNAME_M := $(shell uname -m)
+ifeq ($(UNAME_S),Darwin)
+  ifeq ($(UNAME_M),arm64)
+    PROTOC_OS := osx-aarch_64
+  else
+    PROTOC_OS := osx-x86_64
+  endif
+else ifeq ($(UNAME_S),Linux)
+  ifeq ($(UNAME_M),aarch64)
+    PROTOC_OS := linux-aarch_64
+  else
+    PROTOC_OS := linux-x86_64
+  endif
+else
+  PROTOC_OS := unknown
+endif
+PROTOC_ZIP := protoc-$(PROTOC_VERSION)-$(PROTOC_OS).zip
+PROTOC_URL := https://github.com/protocolbuffers/protobuf/releases/download/v$(PROTOC_VERSION)/$(PROTOC_ZIP)
+PROTOC_DIR := $(CACHE_DIR)/protoc-$(PROTOC_VERSION)
+# Use cached protoc if available, otherwise fall back to system protoc
+PROTOC := $(if $(wildcard $(PROTOC_DIR)/bin/protoc),$(PROTOC_DIR)/bin/protoc,protoc)
 
 # Go build flags
 LDFLAGS := -ldflags="-s -w"
@@ -32,10 +61,10 @@ E2E_PY_BASE_IMAGE := $(DOCKER_IMAGE)-e2e-py-base
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-15s\033[0m %s\n", $$1, $$2}'
 
-proto: ## Generate Go code from proto files
+proto: ## Generate Go code from proto files (uses pinned protoc v33.1 if installed via make install-protoc)
 	@echo "Generating proto files..."
 	@mkdir -p $(GEN_DIR)
-	PATH="$$PATH:$$(go env GOPATH)/bin" protoc \
+	PATH="$$PATH:$$(go env GOPATH)/bin" $(PROTOC) \
 		--proto_path=$(PROTO_DIR) \
 		--proto_path=. \
 		--go_out=$(GEN_DIR) \
@@ -149,10 +178,57 @@ fmt: ## Format Go code
 vet: ## Run go vet
 	go vet ./...
 
-# Proto dependencies check
+# Install pinned protoc (v33.1) for reproducible code generation
+install-protoc: ## Download and install protoc v33.1 into .cache/protoc-33.1
+	@echo "Installing protoc v$(PROTOC_VERSION) for $(PROTOC_OS)..."
+	@if [ "$(PROTOC_OS)" = "unknown" ]; then \
+		echo "Error: Unsupported OS/architecture. Please install protoc manually."; \
+		echo "  Download from: https://github.com/protocolbuffers/protobuf/releases"; \
+		exit 1; \
+	fi
+	@if [ -f "$(PROTOC_DIR)/bin/protoc" ]; then \
+		INSTALLED_VERSION=$$($(PROTOC_DIR)/bin/protoc --version 2>&1 | grep -oE '[0-9]+\.[0-9]+' | head -1); \
+		EXPECTED_VERSION="$(PROTOC_VERSION)"; \
+		if [ "$$INSTALLED_VERSION" = "$$EXPECTED_VERSION" ]; then \
+			echo "✓ protoc v$(PROTOC_VERSION) already installed at $(PROTOC_DIR)"; \
+			$(PROTOC_DIR)/bin/protoc --version; \
+		else \
+			echo "⚠ protoc version mismatch: installed=$$INSTALLED_VERSION, expected=$$EXPECTED_VERSION"; \
+			echo "Reinstalling protoc v$$EXPECTED_VERSION..."; \
+			rm -rf "$(PROTOC_DIR)"; \
+			mkdir -p $(PROTOC_DIR); \
+			curl -sL "$(PROTOC_URL)" -o "$(CACHE_DIR)/$(PROTOC_ZIP)"; \
+			echo "Extracting to $(PROTOC_DIR)..."; \
+			unzip -q -o "$(CACHE_DIR)/$(PROTOC_ZIP)" -d "$(PROTOC_DIR)"; \
+			rm -f "$(CACHE_DIR)/$(PROTOC_ZIP)"; \
+			chmod +x "$(PROTOC_DIR)/bin/protoc"; \
+			echo "✓ protoc installed:"; \
+			$(PROTOC_DIR)/bin/protoc --version; \
+		fi; \
+	else \
+		echo "Downloading $(PROTOC_ZIP)..."; \
+		mkdir -p $(PROTOC_DIR); \
+		curl -sL "$(PROTOC_URL)" -o "$(CACHE_DIR)/$(PROTOC_ZIP)"; \
+		echo "Extracting to $(PROTOC_DIR)..."; \
+		unzip -q -o "$(CACHE_DIR)/$(PROTOC_ZIP)" -d "$(PROTOC_DIR)"; \
+		rm -f "$(CACHE_DIR)/$(PROTOC_ZIP)"; \
+		chmod +x "$(PROTOC_DIR)/bin/protoc"; \
+		echo "✓ protoc installed:"; \
+		$(PROTOC_DIR)/bin/protoc --version; \
+	fi
+
+# Proto dependencies check (prefers pinned protoc from make install-protoc)
 .PHONY: proto-deps
-proto-deps: ## Check proto dependencies
-	@which protoc > /dev/null || (echo "protoc not found. Install with: brew install protobuf" && exit 1)
+proto-deps: ## Check proto dependencies (protoc, protoc-gen-go, protoc-gen-go-grpc)
+	@if [ -f "$(PROTOC_DIR)/bin/protoc" ]; then \
+		echo "Using pinned protoc v$(PROTOC_VERSION) from $(PROTOC_DIR)"; \
+	elif which protoc > /dev/null 2>&1; then \
+		echo "Warning: Using system protoc (may cause version diffs). Run: make install-protoc"; \
+		protoc --version; \
+	else \
+		echo "Error: protoc not found. Run: make install-protoc"; \
+		exit 1; \
+	fi
 	@which protoc-gen-go > /dev/null || (echo "protoc-gen-go not found. Install with: go install google.golang.org/protobuf/cmd/protoc-gen-go@latest" && exit 1)
 	@which protoc-gen-go-grpc > /dev/null || (echo "protoc-gen-go-grpc not found. Install with: go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest" && exit 1)
 	@echo "All proto dependencies are installed"
