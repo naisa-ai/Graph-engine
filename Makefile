@@ -1,6 +1,6 @@
 # Graph-engine Makefile
 
-.PHONY: proto build run test test-unit test-docker test-all test-shim clean lint help e2e e2e-grpc e2e-go e2e-py docker docker-base docker-base-rebuild e2e-base e2e-go-base e2e-py-base e2e-base-rebuild install-protoc proto-deps
+.PHONY: proto build run test test-unit test-docker test-all test-shim clean lint help e2e e2e-grpc e2e-go e2e-py docker docker-base docker-base-rebuild e2e-base e2e-go-base e2e-py-base e2e-base-rebuild install-protoc install-protoc-plugins install-proto-tools proto-deps
 
 # Binary name
 BINARY_NAME := graph-engined
@@ -45,6 +45,12 @@ PROTOC_DIR := $(CACHE_DIR)/protoc-$(PROTOC_VERSION)
 # Use cached protoc if available, otherwise fall back to system protoc
 PROTOC := $(if $(wildcard $(PROTOC_DIR)/bin/protoc),$(PROTOC_DIR)/bin/protoc,protoc)
 
+# Pinned protoc plugin versions (for reproducible generated code)
+# https://github.com/protocolbuffers/protobuf-go/releases
+PROTOC_GEN_GO_VERSION := v1.36.11
+# https://github.com/grpc/grpc-go/releases (cmd/protoc-gen-go-grpc)
+PROTOC_GEN_GO_GRPC_VERSION := v1.6.0
+
 # Go build flags
 LDFLAGS := -ldflags="-s -w"
 
@@ -61,7 +67,7 @@ E2E_PY_BASE_IMAGE := $(DOCKER_IMAGE)-e2e-py-base
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-15s\033[0m %s\n", $$1, $$2}'
 
-proto: ## Generate Go code from proto files (uses pinned protoc v33.1 if installed via make install-protoc)
+proto: install-proto-tools ## Generate Go code from proto files (uses pinned protoc + plugins)
 	@echo "Generating proto files..."
 	@mkdir -p $(GEN_DIR)
 	PATH="$$PATH:$$(go env GOPATH)/bin" $(PROTOC) \
@@ -217,6 +223,16 @@ install-protoc: ## Download and install protoc v33.1 into .cache/protoc-33.1
 		$(PROTOC_DIR)/bin/protoc --version; \
 	fi
 
+# Install pinned protoc Go plugins (protoc-gen-go, protoc-gen-go-grpc)
+install-protoc-plugins: ## Install protoc-gen-go and protoc-gen-go-grpc at pinned versions
+	@echo "Installing protoc plugins (pinned)..."
+	go install google.golang.org/protobuf/cmd/protoc-gen-go@$(PROTOC_GEN_GO_VERSION)
+	go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@$(PROTOC_GEN_GO_GRPC_VERSION)
+	@echo "✓ protoc-gen-go $(PROTOC_GEN_GO_VERSION), protoc-gen-go-grpc $(PROTOC_GEN_GO_GRPC_VERSION) installed"
+
+# Install protoc + Go plugins (single target for CI and local setup)
+install-proto-tools: install-protoc install-protoc-plugins ## Install pinned protoc and protoc-gen-go / protoc-gen-go-grpc
+
 # Proto dependencies check (prefers pinned protoc from make install-protoc)
 .PHONY: proto-deps
 proto-deps: ## Check proto dependencies (protoc, protoc-gen-go, protoc-gen-go-grpc)
@@ -229,8 +245,8 @@ proto-deps: ## Check proto dependencies (protoc, protoc-gen-go, protoc-gen-go-gr
 		echo "Error: protoc not found. Run: make install-protoc"; \
 		exit 1; \
 	fi
-	@which protoc-gen-go > /dev/null || (echo "protoc-gen-go not found. Install with: go install google.golang.org/protobuf/cmd/protoc-gen-go@latest" && exit 1)
-	@which protoc-gen-go-grpc > /dev/null || (echo "protoc-gen-go-grpc not found. Install with: go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest" && exit 1)
+	@which protoc-gen-go > /dev/null || (echo "protoc-gen-go not found. Install with: go install google.golang.org/protobuf/cmd/protoc-gen-go@$(PROTOC_GEN_GO_VERSION)" && exit 1)
+	@which protoc-gen-go-grpc > /dev/null || (echo "protoc-gen-go-grpc not found. Install with: go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@$(PROTOC_GEN_GO_GRPC_VERSION)" && exit 1)
 	@echo "All proto dependencies are installed"
 
 # Local development helpers (require igraph on host)

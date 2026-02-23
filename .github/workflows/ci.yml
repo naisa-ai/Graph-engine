@@ -102,13 +102,8 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
 
-      - name: Install pinned protoc (v33.1)
-        run: make install-protoc
-
-      - name: Install protoc plugins
-        run: |
-          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
-          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+      - name: Install proto tools (pinned protoc + plugins)
+        run: make install-proto-tools
 
       - name: Generate proto
         run: make proto
