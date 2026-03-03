@@ -210,6 +210,33 @@ func (c *Client) CommunitiesWithParams(ctx context.Context, graph *gepb.GraphRef
 	return c.collectComponentsResult(ctx, result)
 }
 
+// CommunitiesOnView detects communities on a view using the Louvain algorithm.
+func (c *Client) CommunitiesOnView(ctx context.Context, view *gepb.ViewRef) (*ComponentsResult, error) {
+	return c.CommunitiesOnViewWithParams(ctx, view, gepb.CommunitiesSpec_LOUVAIN, 1.0)
+}
+
+// CommunitiesOnViewWithParams detects communities on a view with specified method and resolution.
+func (c *Client) CommunitiesOnViewWithParams(ctx context.Context, view *gepb.ViewRef, method gepb.CommunitiesSpec_Method, resolution float64) (*ComponentsResult, error) {
+	req := &gepb.RunRequest{
+		Target: &gepb.RunRequest_View{View: view},
+		Algo: &gepb.AlgoSpec{
+			Kind: &gepb.AlgoSpec_Communities{
+				Communities: &gepb.CommunitiesSpec{
+					Method:     method,
+					Resolution: resolution,
+				},
+			},
+		},
+	}
+
+	result, err := c.RunAndWait(ctx, req, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	return c.collectComponentsResult(ctx, result)
+}
+
 // Distances computes distances between source and target sets.
 func (c *Client) Distances(ctx context.Context, graph *gepb.GraphRef, sources, targets []uint64) (*DistanceMatrix, error) {
 	req := &gepb.RunRequest{
