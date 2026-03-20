@@ -123,3 +123,27 @@ jobs:
 
           echo "## Image" >> $GITHUB_STEP_SUMMARY
           echo "${ECR_REGISTRY}/${SERVICE_NAME}:${BRANCH_SHA_TAG}" >> $GITHUB_STEP_SUMMARY
+
+  deploy:
+    name: Trigger Auto-Deploy
+    needs: [prepare, manifest]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger sre-deployment
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          curl -s -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/naisa-ai/sre-deployment/dispatches \
+            -d '{
+              "event_type": "deploy-image",
+              "client_payload": {
+                "source_repo": "${{ github.repository }}",
+                "image_tag": "${{ needs.prepare.outputs.branch_sha_tag }}",
+                "source_commit_url": "${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}",
+                "source_committer": "${{ github.actor }}"
+              }
+            }'
