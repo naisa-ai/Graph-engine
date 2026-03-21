@@ -127,23 +127,32 @@ jobs:
   deploy:
     name: Trigger Auto-Deploy
     needs: [prepare, manifest]
-    if: github.ref == 'refs/heads/main'
+    if: false # disabled — using scheduled-deploy in sre-deployment. Change to: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - name: Trigger sre-deployment
         env:
           GH_TOKEN: ${{ secrets.GH_PAT }}
+          SOURCE_COMMIT_MSG: ${{ github.event.head_commit.message }}
         run: |
-          curl -s -X POST \
+          PAYLOAD=$(jq -n \
+            --arg repo "${{ github.repository }}" \
+            --arg tag "${{ needs.prepare.outputs.branch_sha_tag }}" \
+            --arg url "${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}" \
+            --arg committer "${{ github.actor }}" \
+            --arg msg "$SOURCE_COMMIT_MSG" \
+            '{
+              event_type: "deploy-image",
+              client_payload: {
+                source_repo: $repo,
+                image_tag: $tag,
+                source_commit_url: $url,
+                source_committer: $committer,
+                source_commit_message: $msg
+              }
+            }')
+          curl -sf -X POST \
             -H "Authorization: Bearer $GH_TOKEN" \
             -H "Accept: application/vnd.github+json" \
             https://api.github.com/repos/naisa-ai/sre-deployment/dispatches \
-            -d '{
-              "event_type": "deploy-image",
-              "client_payload": {
-                "source_repo": "${{ github.repository }}",
-                "image_tag": "${{ needs.prepare.outputs.branch_sha_tag }}",
-                "source_commit_url": "${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}",
-                "source_committer": "${{ github.actor }}"
-              }
-            }'
+            -d "$PAYLOAD"
