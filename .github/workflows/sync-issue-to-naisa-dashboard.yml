@@ -1,0 +1,23 @@
+name: Sync issue to Naisa dashboard
+
+on:
+  issues:
+    types:
+      - opened
+      - reopened
+      - edited
+      - labeled
+      - unlabeled
+      - assigned
+      - unassigned
+      - milestoned
+      - demilestoned
+      - closed
+
+jobs:
+  sync:
+    uses: naisa-ai/github-automation/.github/workflows/reusable-sync-issue-to-project.yml@main
+    secrets: inherit
+    with:
+      org: naisa-ai
+      project_number: 3
