@@ -56,17 +56,16 @@ func NewServer(cfg *config.Config, logger *slog.Logger, buildStore *service.Buil
 	}
 
 	// Create core services
-	// VersionStore: 5 minute TTL for old versions, 1GB memory limit
-	s.versionStore = service.NewVersionStore(5*time.Minute, 1<<30)
+	s.versionStore = service.NewVersionStore(
+		cfg.Limits.GetVersionCleanupTTL(),
+		cfg.Limits.GetVersionStoreMemoryBytes(),
+	)
 
-	// GraphRegistry: max 10 graphs (from config)
 	s.graphRegistry = service.NewGraphRegistry(s.versionStore, cfg.Limits.MaxGraphs)
 
-	// ResultStore: max 1000 results, 500MB memory, 10 minute TTL
-	s.resultStore = service.NewResultStore(1000, 500<<20, 10*time.Minute)
+	s.resultStore = service.NewResultStore(1000, cfg.Limits.GetResultStoreMemoryBytes(), 10*time.Minute)
 
-	// ViewStore: max 100 views, 200MB memory, 5 minute TTL
-	s.viewStore = service.NewViewStore(100, 200<<20, 5*time.Minute)
+	s.viewStore = service.NewViewStore(100, cfg.Limits.GetViewStoreMemoryBytes(), 5*time.Minute)
 
 	// ViewManager: orchestrates view creation and caching
 	s.viewManager = service.NewViewManager(s.viewStore, s.versionStore, logger)
@@ -118,7 +117,7 @@ func NewServer(cfg *config.Config, logger *slog.Logger, buildStore *service.Buil
 	s.grpcServer = grpc.NewServer(opts...)
 
 	// Initialize handlers
-	s.graphEngine = NewGraphEngineHandler(logger, buildStore, s.graphRegistry, s.versionStore, s.resultStore, s.viewManager, s.scheduler)
+	s.graphEngine = NewGraphEngineHandler(logger, buildStore, s.graphRegistry, s.versionStore, s.resultStore, s.viewManager, s.scheduler, &cfg.Limits)
 	s.graphEngineOps = NewGraphEngineOpsHandler(logger, buildStore, s.graphRegistry, s.versionStore, s.resultStore, s.viewStore, cfg.Limits.MaxExportEdges)
 
 	// Register services

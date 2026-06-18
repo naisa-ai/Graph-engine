@@ -12,6 +12,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/naisa-ai/graph-engine/internal/config"
 	"github.com/naisa-ai/graph-engine/internal/metrics"
 	"github.com/naisa-ai/graph-engine/internal/service"
 	"github.com/naisa-ai/graph-engine/internal/shim"
@@ -27,13 +28,14 @@ func createShimGraphForVersion(version *service.GraphVersion) (*shim.Graph, erro
 // GraphEngineHandler implements the GraphEngine gRPC service.
 type GraphEngineHandler struct {
 	gepb.UnimplementedGraphEngineServer
-	logger        *slog.Logger
-	buildStore    *service.BuildStore
-	graphRegistry *service.GraphRegistry
-	versionStore  *service.VersionStore
-	resultStore   *service.ResultStore
-	viewManager   *service.ViewManager
-	scheduler     *service.Scheduler
+	logger           *slog.Logger
+	buildStore       *service.BuildStore
+	graphRegistry    *service.GraphRegistry
+	versionStore     *service.VersionStore
+	resultStore      *service.ResultStore
+	viewManager      *service.ViewManager
+	scheduler        *service.Scheduler
+	validationLimits service.ValidationLimits
 }
 
 // NewGraphEngineHandler creates a new GraphEngineHandler.
@@ -45,15 +47,22 @@ func NewGraphEngineHandler(
 	resultStore *service.ResultStore,
 	viewManager *service.ViewManager,
 	scheduler *service.Scheduler,
+	limitsConfig *config.LimitsConfig,
 ) *GraphEngineHandler {
+	vl := service.DefaultValidationLimits()
+	if limitsConfig != nil {
+		vl.MaxVertices = limitsConfig.GetMaxValidationVertices()
+		vl.MaxEdges = limitsConfig.GetMaxValidationEdges()
+	}
 	return &GraphEngineHandler{
-		logger:        logger,
-		buildStore:    buildStore,
-		graphRegistry: graphRegistry,
-		versionStore:  versionStore,
-		resultStore:   resultStore,
-		viewManager:   viewManager,
-		scheduler:     scheduler,
+		logger:           logger,
+		buildStore:       buildStore,
+		graphRegistry:    graphRegistry,
+		versionStore:     versionStore,
+		resultStore:      resultStore,
+		viewManager:      viewManager,
+		scheduler:        scheduler,
+		validationLimits: vl,
 	}
 }
 
@@ -203,7 +212,7 @@ func (h *GraphEngineHandler) PublishBuild(ctx context.Context, req *gepb.Publish
 	}
 
 	// Validate build
-	validationResult := build.Validate(service.DefaultValidationLimits())
+	validationResult := build.Validate(h.validationLimits)
 	if !validationResult.Valid {
 		h.logger.Error("build validation failed",
 			"build_id", req.GetBuildId(),
