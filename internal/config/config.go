@@ -4,6 +4,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -44,12 +45,68 @@ type AuthConfig struct {
 
 // LimitsConfig holds resource limit settings.
 type LimitsConfig struct {
-	MaxGraphs              int `yaml:"max_graphs"`
-	MaxBuildsPending       int `yaml:"max_builds_pending"`
-	MaxParallelJobs        int `yaml:"max_parallel_jobs"`
-	MaxConcurrentPerTenant int `yaml:"max_concurrent_per_tenant"`
-	MaxGlobalConcurrent    int `yaml:"max_global_concurrent"`
-	MaxExportEdges         int `yaml:"max_export_edges"`
+	MaxGraphs              int    `yaml:"max_graphs"`
+	MaxBuildsPending       int    `yaml:"max_builds_pending"`
+	MaxParallelJobs        int    `yaml:"max_parallel_jobs"`
+	MaxConcurrentPerTenant int    `yaml:"max_concurrent_per_tenant"`
+	MaxGlobalConcurrent    int    `yaml:"max_global_concurrent"`
+	MaxExportEdges         int    `yaml:"max_export_edges"`
+	MaxValidationVertices  uint64 `yaml:"max_validation_vertices"`
+	MaxValidationEdges     uint64 `yaml:"max_validation_edges"`
+	VersionStoreMemoryMB   int    `yaml:"version_store_memory_mb"`
+	VersionCleanupTTLSec   int    `yaml:"version_cleanup_ttl_sec"`
+	ViewStoreMemoryMB      int    `yaml:"view_store_memory_mb"`
+	ResultStoreMemoryMB    int    `yaml:"result_store_memory_mb"`
+}
+
+// GetVersionStoreMemoryBytes returns the version store memory limit in bytes.
+func (c *LimitsConfig) GetVersionStoreMemoryBytes() uint64 {
+	if c.VersionStoreMemoryMB <= 0 {
+		return 1 << 30 // 1 GB default
+	}
+	return uint64(c.VersionStoreMemoryMB) << 20
+}
+
+// GetVersionCleanupTTL returns the version cleanup TTL as a time.Duration.
+func (c *LimitsConfig) GetVersionCleanupTTL() time.Duration {
+	if c.VersionCleanupTTLSec <= 0 {
+		return 5 * time.Minute
+	}
+	return time.Duration(c.VersionCleanupTTLSec) * time.Second
+}
+
+// GetViewStoreMemoryBytes returns the view store memory limit in bytes.
+func (c *LimitsConfig) GetViewStoreMemoryBytes() uint64 {
+	if c.ViewStoreMemoryMB <= 0 {
+		return 200 << 20 // 200 MB default
+	}
+	return uint64(c.ViewStoreMemoryMB) << 20
+}
+
+// GetResultStoreMemoryBytes returns the result store memory limit in bytes.
+func (c *LimitsConfig) GetResultStoreMemoryBytes() uint64 {
+	if c.ResultStoreMemoryMB <= 0 {
+		return 500 << 20 // 500 MB default
+	}
+	return uint64(c.ResultStoreMemoryMB) << 20
+}
+
+// GetMaxValidationVertices returns the effective max validation vertices.
+// Returns 1_000_000 if not configured or set to 0.
+func (c *LimitsConfig) GetMaxValidationVertices() uint64 {
+	if c.MaxValidationVertices == 0 {
+		return 1_000_000
+	}
+	return c.MaxValidationVertices
+}
+
+// GetMaxValidationEdges returns the effective max validation edges.
+// Returns 10_000_000 if not configured or set to 0.
+func (c *LimitsConfig) GetMaxValidationEdges() uint64 {
+	if c.MaxValidationEdges == 0 {
+		return 10_000_000
+	}
+	return c.MaxValidationEdges
 }
 
 // IgraphConfig holds igraph shim layer settings.
@@ -97,6 +154,12 @@ func DefaultConfig() *Config {
 			MaxConcurrentPerTenant: 10,
 			MaxGlobalConcurrent:    100,
 			MaxExportEdges:         10000,
+			MaxValidationVertices:  1_000_000,
+			MaxValidationEdges:     10_000_000,
+			VersionStoreMemoryMB:   1024,
+			VersionCleanupTTLSec:   300,
+			ViewStoreMemoryMB:      200,
+			ResultStoreMemoryMB:    500,
 		},
 		Igraph: IgraphConfig{
 			MaxParallelCallsPerVersion: 1, // Conservative default; increase after validation
