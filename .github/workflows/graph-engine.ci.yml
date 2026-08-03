@@ -190,6 +190,7 @@ jobs:
         if: ${{ github.event.inputs.tag_latest_good == 'true' }}
         run: |
           SHA_SHORT="${{ needs.prepare.outputs.sha_short }}"
+          RESOLVED_SHA="${{ needs.prepare.outputs.resolved_sha }}"
           manifest_file="$(mktemp)"
           aws ecr batch-get-image \
             --repository-name "${SERVICE_NAME}" \
@@ -201,14 +202,29 @@ jobs:
             --region "${AWS_REGION}" \
             --image-ids imageTag="${SHA_SHORT}" \
             --query 'images[0].imageManifestMediaType' --output text)"
-          aws ecr put-image \
-            --repository-name "${SERVICE_NAME}" \
-            --region "${AWS_REGION}" \
-            --image-tag latest-good \
-            --image-manifest "file://${manifest_file}" \
-            --image-manifest-media-type "${media_type}" \
-            >/dev/null
-
+          # Tag latest-good and the full commit SHA with the SAME manifest
+          # bytes so they are siblings on one digest (ECR can otherwise assign a
+          # different digest to a retagged index, leaving latest-good alone).
+          put_ecr_tag() {
+            local tag="$1"
+            local out
+            if ! out=$(aws ecr put-image \
+              --repository-name "${SERVICE_NAME}" \
+              --region "${AWS_REGION}" \
+              --image-tag "${tag}" \
+              --image-manifest "file://${manifest_file}" \
+              --image-manifest-media-type "${media_type}" 2>&1); then
+              if echo "$out" | grep -q ImageAlreadyExistsException; then
+                echo "Tag ${tag} already on this digest — ok."
+              else
+                echo "$out" >&2
+                return 1
+              fi
+            fi
+          }
+          # RESOLVED_SHA must be set by the surrounding step (full 40-char commit).
+          put_ecr_tag latest-good
+          put_ecr_tag "${RESOLVED_SHA}"
           echo "- \`${ECR_REGISTRY}/${SERVICE_NAME}:latest-good\` -> commit \`${{ needs.prepare.outputs.resolved_sha }}\` (tests passed in maya's testbed suite)" >> $GITHUB_STEP_SUMMARY
 
   deploy:
