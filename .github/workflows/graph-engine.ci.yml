@@ -187,7 +187,9 @@ jobs:
           echo "\`${{ needs.prepare.outputs.sha_short }}\` already existed in ECR — reused, nothing rebuilt." >> $GITHUB_STEP_SUMMARY
 
       - name: Tag latest-good (tested commit only)
-        if: ${{ github.event.inputs.tag_latest_good == 'true' }}
+        if: >-
+          ${{ github.event.inputs.tag_latest_good == true ||
+              github.event.inputs.tag_latest_good == 'true' }}
         run: |
           SHA_SHORT="${{ needs.prepare.outputs.sha_short }}"
           RESOLVED_SHA="${{ needs.prepare.outputs.resolved_sha }}"
