@@ -208,23 +208,38 @@ jobs:
           put_ecr_tag() {
             local tag="$1"
             local out
-            if ! out=$(aws ecr put-image \
-              --repository-name "${SERVICE_NAME}" \
-              --region "${AWS_REGION}" \
-              --image-tag "${tag}" \
-              --image-manifest "file://${manifest_file}" \
-              --image-manifest-media-type "${media_type}" 2>&1); then
+            put_once() {
+              aws ecr put-image \
+                --repository-name "${SERVICE_NAME}" \
+                --region "${AWS_REGION}" \
+                --image-tag "${tag}" \
+                --image-manifest "file://${manifest_file}" \
+                --image-manifest-media-type "${media_type}"
+            }
+            if ! out=$(put_once 2>&1); then
               if echo "$out" | grep -q ImageAlreadyExistsException; then
                 echo "Tag ${tag} already on this digest — ok."
+              elif echo "$out" | grep -qiE 'immutable|cannot be overwritten'; then
+                echo "Tag ${tag} exists on another digest (immutable) — deleting and retagging."
+                aws ecr batch-delete-image \
+                  --repository-name "${SERVICE_NAME}" \
+                  --region "${AWS_REGION}" \
+                  --image-ids "imageTag=${tag}" >/dev/null
+                put_once
               else
                 echo "$out" >&2
                 return 1
               fi
             fi
           }
-          # RESOLVED_SHA must be set by the surrounding step (full 40-char commit).
+          # Promotion-only (this step runs iff tag_latest_good=true). Ordinary push
+          # builds are unchanged. Also retag main + main-<sha> so cut-deploy's
+          # unchanged release-cli resolution (main alias → main-<sha> sibling) picks
+          # up the tested image without teaching cut-deploy about latest-good.
           put_ecr_tag latest-good
           put_ecr_tag "${RESOLVED_SHA}"
+          put_ecr_tag main
+          put_ecr_tag "main-${SHA_SHORT}"
           echo "- \`${ECR_REGISTRY}/${SERVICE_NAME}:latest-good\` -> commit \`${{ needs.prepare.outputs.resolved_sha }}\` (tests passed in maya's testbed suite)" >> $GITHUB_STEP_SUMMARY
 
   deploy:
