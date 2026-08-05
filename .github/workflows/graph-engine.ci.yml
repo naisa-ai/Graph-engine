@@ -3,8 +3,25 @@ name: Graph-Engine CI
 on:
   push:
   workflow_dispatch:
+    inputs:
+      sha:
+        description: >-
+          Commit SHA to build (defaults to the dispatch ref's HEAD). Used by
+          maya's testbed suite to build the exact commit that passed tests,
+          which may be behind the current tip of main.
+        required: false
+        type: string
+      tag_latest_good:
+        description: >-
+          Also tag the resulting multi-arch image latest-good in ECR. Used
+          for commits that have passed the Maya testbed test stage.
+        required: false
+        default: false
+        type: boolean
 
-run-name: "${{ github.workflow }} - ${{ github.ref_name }} (${{ github.sha }})"
+run-name: >-
+  ${{ github.workflow }} - ${{ github.ref_name }}
+  (${{ github.event.inputs.sha || github.sha }})
 
 env:
   AWS_REGION: us-west-1
@@ -17,24 +34,53 @@ jobs:
     name: Prepare Build
     runs-on: ubuntu-latest
     outputs:
+      resolved_sha: ${{ steps.tags.outputs.resolved_sha }}
       sha_short: ${{ steps.tags.outputs.sha_short }}
       branch_tag: ${{ steps.tags.outputs.branch_tag }}
       branch_sha_tag: ${{ steps.tags.outputs.branch_sha_tag }}
+      image_exists: ${{ steps.check_existing.outputs.image_exists }}
     steps:
       - name: Prepare image tags
         id: tags
+        env:
+          INPUT_SHA: ${{ github.event.inputs.sha }}
         run: |
+          RESOLVED_SHA="${INPUT_SHA:-$GITHUB_SHA}"
           BRANCH_NAME="${GITHUB_REF_NAME}"
           BRANCH_TAG=$(echo "${BRANCH_NAME}" | sed 's/\//-/g')
-          SHA_SHORT="${GITHUB_SHA::7}"
+          SHA_SHORT="${RESOLVED_SHA:0:7}"
           BRANCH_SHA_TAG="${BRANCH_TAG}-${SHA_SHORT}"
+          echo "resolved_sha=${RESOLVED_SHA}" >> "$GITHUB_OUTPUT"
           echo "sha_short=${SHA_SHORT}" >> "$GITHUB_OUTPUT"
           echo "branch_tag=${BRANCH_TAG}" >> "$GITHUB_OUTPUT"
           echo "branch_sha_tag=${BRANCH_SHA_TAG}" >> "$GITHUB_OUTPUT"
 
+      - name: Configure AWS credentials (for ECR existence check)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Check if this commit was already built
+        id: check_existing
+        run: |
+          SHA_SHORT="${{ steps.tags.outputs.sha_short }}"
+          if aws ecr describe-images \
+              --repository-name "${SERVICE_NAME}" \
+              --region "${AWS_REGION}" \
+              --image-ids imageTag="${SHA_SHORT}" >/dev/null 2>&1; then
+            echo "Image ${SERVICE_NAME}:${SHA_SHORT} already exists in ECR — skipping build."
+            echo "image_exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Image ${SERVICE_NAME}:${SHA_SHORT} not found in ECR — proceeding with a full build."
+            echo "image_exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
   build:
     name: Build ${{ matrix.arch }}
     needs: prepare
+    if: ${{ needs.prepare.outputs.image_exists != 'true' }}
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
@@ -52,6 +98,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.resolved_sha }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -85,6 +133,12 @@ jobs:
   manifest:
     name: Create Multi-Arch Manifest
     needs: [prepare, build]
+    if: >-
+      ${{
+        always() &&
+        needs.prepare.result == 'success' &&
+        (needs.build.result == 'success' || needs.build.result == 'skipped')
+      }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -98,12 +152,14 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Authenticate Docker to Amazon ECR
+        if: ${{ needs.prepare.outputs.image_exists != 'true' }}
         run: |
           aws ecr get-login-password --region "${AWS_REGION}" | docker login \
             --username AWS \
             --password-stdin "${ECR_REGISTRY}"
 
       - name: Create and push multi-arch manifests
+        if: ${{ needs.prepare.outputs.image_exists != 'true' }}
         run: |
           SHA_SHORT="${{ needs.prepare.outputs.sha_short }}"
           BRANCH_TAG="${{ needs.prepare.outputs.branch_tag }}"
@@ -123,6 +179,70 @@ jobs:
 
           echo "## Image" >> $GITHUB_STEP_SUMMARY
           echo "${ECR_REGISTRY}/${SERVICE_NAME}:${BRANCH_SHA_TAG}" >> $GITHUB_STEP_SUMMARY
+
+      - name: Note reused image
+        if: ${{ needs.prepare.outputs.image_exists == 'true' }}
+        run: |
+          echo "## Image" >> $GITHUB_STEP_SUMMARY
+          echo "\`${{ needs.prepare.outputs.sha_short }}\` already existed in ECR — reused, nothing rebuilt." >> $GITHUB_STEP_SUMMARY
+
+      - name: Tag latest-good (tested commit only)
+        if: >-
+          ${{ github.event.inputs.tag_latest_good == true ||
+              github.event.inputs.tag_latest_good == 'true' }}
+        run: |
+          SHA_SHORT="${{ needs.prepare.outputs.sha_short }}"
+          RESOLVED_SHA="${{ needs.prepare.outputs.resolved_sha }}"
+          manifest_file="$(mktemp)"
+          aws ecr batch-get-image \
+            --repository-name "${SERVICE_NAME}" \
+            --region "${AWS_REGION}" \
+            --image-ids imageTag="${SHA_SHORT}" \
+            --query 'images[0].imageManifest' --output text > "${manifest_file}"
+          media_type="$(aws ecr batch-get-image \
+            --repository-name "${SERVICE_NAME}" \
+            --region "${AWS_REGION}" \
+            --image-ids imageTag="${SHA_SHORT}" \
+            --query 'images[0].imageManifestMediaType' --output text)"
+          # Tag latest-good and the full commit SHA with the SAME manifest
+          # bytes so they are siblings on one digest (ECR can otherwise assign a
+          # different digest to a retagged index, leaving latest-good alone).
+          put_ecr_tag() {
+            local tag="$1"
+            local out
+            put_once() {
+              aws ecr put-image \
+                --repository-name "${SERVICE_NAME}" \
+                --region "${AWS_REGION}" \
+                --image-tag "${tag}" \
+                --image-manifest "file://${manifest_file}" \
+                --image-manifest-media-type "${media_type}"
+            }
+            if ! out=$(put_once 2>&1); then
+              if echo "$out" | grep -q ImageAlreadyExistsException; then
+                echo "Tag ${tag} already on this digest — ok."
+              elif echo "$out" | grep -qiE 'immutable|cannot be overwritten'; then
+                echo "Tag ${tag} exists on another digest (immutable) — deleting and retagging."
+                aws ecr batch-delete-image \
+                  --repository-name "${SERVICE_NAME}" \
+                  --region "${AWS_REGION}" \
+                  --image-ids "imageTag=${tag}" >/dev/null
+                put_once
+              else
+                echo "$out" >&2
+                return 1
+              fi
+            fi
+          }
+          # Promotion-only (this step runs iff tag_latest_good=true). Ordinary push
+          # builds are unchanged. Also retag main + main-<sha> so cut-deploy's
+          # unchanged release-cli resolution (main alias → main-<sha> sibling) picks
+          # up the tested image without teaching cut-deploy about latest-good.
+          put_ecr_tag latest-good
+          put_ecr_tag "${RESOLVED_SHA}"
+          put_ecr_tag main
+          put_ecr_tag "main-${SHA_SHORT}"
+          echo "- \`${ECR_REGISTRY}/${SERVICE_NAME}:latest-good\` -> commit \`${{ needs.prepare.outputs.resolved_sha }}\` (tests passed in maya's testbed suite)" >> $GITHUB_STEP_SUMMARY
 
   deploy:
     name: Trigger Auto-Deploy
