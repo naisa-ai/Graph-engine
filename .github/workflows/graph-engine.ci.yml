@@ -239,6 +239,7 @@ jobs:
           # unchanged release-cli resolution (main alias → main-<sha> sibling) picks
           # up the tested image without teaching cut-deploy about latest-good.
           put_ecr_tag latest-good
+          put_ecr_tag "latest-good-${SHA_SHORT}"
           put_ecr_tag "${RESOLVED_SHA}"
           put_ecr_tag main
           put_ecr_tag "main-${SHA_SHORT}"
