@@ -133,6 +133,15 @@ class ComplianceTests(unittest.TestCase):
         with patch.object(compliance, "run", self.command), self.assertRaises(FileNotFoundError):
             self.prepare()
 
+    def test_application_symlink_cannot_copy_unrelated_files_into_source(self):
+        unrelated = self.root / "unrelated.conf"
+        unrelated.write_text("unrelated private configuration\n")
+        link = self.source / "internal/linked.conf"
+        link.parent.mkdir(parents=True)
+        link.symlink_to(unrelated)
+        with patch.object(compliance, "run", self.command), self.assertRaisesRegex(ValueError, "Unexpected source symlink"):
+            self.prepare()
+
     def test_missing_dependency_notice_prevents_packaging(self):
         with zipfile.ZipFile(self.module_zip, "w") as archive:
             archive.writestr("example.org/module/main.go", "package module\n")

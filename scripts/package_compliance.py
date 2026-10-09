@@ -92,7 +92,7 @@ def prepare(args):
     def ignore(directory, names):
         return [name for name in names if name == "__pycache__" or
                 (Path(directory) == source and name == "graph-engined")]
-    shutil.copytree(source, tree, ignore=ignore)
+    shutil.copytree(source, tree, ignore=ignore, symlinks=True)
     manifest = source_manifest(tree)
     notice = ["Third-party notices for the distributed Graph Engine server.\n"
               "Individual components retain their original licenses and copyrights.\n"]
