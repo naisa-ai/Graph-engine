@@ -6,7 +6,7 @@ A high-performance, stateful graph analytics service built on [igraph](https://i
 
 Graph-Engine provides a network service architecture that:
 
-- **Avoids GPL pollution in clients** - Clients communicate via gRPC and don't link against igraph
+- **MIT clients** - Clients communicate via gRPC and don't link against igraph
 - **Supports stateful graph management** - Multiple graphs loaded and versioned across calls
 - **Enables concurrent access** - Many clients can query the same graph version simultaneously
 - **Scales to production workloads** - Target: ~200K nodes, ~1M edges per graph
@@ -202,15 +202,26 @@ igraph:
 
 ## License
 
-This project uses a **dual-license model** due to igraph's GPL license:
+This project licenses its server and interface components separately:
 
 | Component | License | Notes |
 |-----------|---------|-------|
-| Server (`cmd/`, `internal/`, `gen/`) | GPL-2.0-or-later | Links to igraph |
+| Server (`cmd/`, `internal/`) | GPL-2.0-or-later | Links to igraph; combined distributions use GPLv3 for Apache-2.0 compatibility |
 | Go Client (`clients/go/`) | MIT | Network-only, no igraph linking |
 | Python Client (`clients/py/`) | MIT | Network-only, no igraph linking |
 | Proto Definitions (`proto/`) | MIT | Interface definitions only |
+| Generated Protocol Stubs (`gen/`) | MIT | Preserves existing file notices |
 
-**Key insight**: The client libraries communicate with the server over gRPC (network protocol) and do **not** link to igraph. This keeps clients free from GPL obligations.
+The MIT clients communicate with the server over gRPC and do not link to
+igraph. Keep proprietary applications separate from the server implementation.
+Server binary and container distributions still require corresponding source
+and license notices.
 
-See [LICENSE](LICENSE) for details.
+See [LICENSING.md](LICENSING.md) for the license scope and distribution requirements,
+and [LICENSE](LICENSE) for the GPLv2 text.
+
+## Contributions
+
+Naisa does not accept public pull requests or code contributions. Public forks
+are allowed under the component licenses; only authorized Naisa team members
+may change this upstream repository. See [CONTRIBUTING.md](CONTRIBUTING.md).
