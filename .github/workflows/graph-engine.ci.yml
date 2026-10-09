@@ -40,12 +40,16 @@ jobs:
       branch_sha_tag: ${{ steps.tags.outputs.branch_sha_tag }}
       image_exists: ${{ steps.check_existing.outputs.image_exists }}
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.sha || github.sha }}
+          persist-credentials: false
+
       - name: Prepare image tags
         id: tags
-        env:
-          INPUT_SHA: ${{ github.event.inputs.sha }}
         run: |
-          RESOLVED_SHA="${INPUT_SHA:-$GITHUB_SHA}"
+          RESOLVED_SHA="$(git rev-parse HEAD)"
           BRANCH_NAME="${GITHUB_REF_NAME}"
           BRANCH_TAG=$(echo "${BRANCH_NAME}" | sed 's/\//-/g')
           SHA_SHORT="${RESOLVED_SHA:0:7}"
@@ -70,8 +74,17 @@ jobs:
               --repository-name "${SERVICE_NAME}" \
               --region "${AWS_REGION}" \
               --image-ids imageTag="${SHA_SHORT}" >/dev/null 2>&1; then
-            echo "Image ${SERVICE_NAME}:${SHA_SHORT} already exists in ECR — skipping build."
-            echo "image_exists=true" >> "$GITHUB_OUTPUT"
+            aws ecr get-login-password --region "${AWS_REGION}" | docker login \
+              --username AWS --password-stdin "${ECR_REGISTRY}"
+            COMPLIANT=true
+            for ARCH in amd64 arm64; do
+              IMAGE="${ECR_REGISTRY}/${SERVICE_NAME}:${SHA_SHORT}-${ARCH}"
+              if ! docker pull --platform "linux/${ARCH}" "$IMAGE" || \
+                 ! sh scripts/verify_container.sh "$IMAGE" "${{ steps.tags.outputs.resolved_sha }}"; then
+                COMPLIANT=false
+              fi
+            done
+            echo "image_exists=${COMPLIANT}" >> "$GITHUB_OUTPUT"
           else
             echo "Image ${SERVICE_NAME}:${SHA_SHORT} not found in ECR — proceeding with a full build."
             echo "image_exists=false" >> "$GITHUB_OUTPUT"
@@ -100,6 +113,10 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ needs.prepare.outputs.resolved_sha }}
+          persist-credentials: false
+
+      - name: Test compliance packaging
+        run: python3 -m unittest discover -s scripts -p 'test_*.py' -v
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -117,18 +134,24 @@ jobs:
             --username AWS \
             --password-stdin "${ECR_REGISTRY}"
 
-      - name: Build and push (${{ matrix.arch }})
+      - name: Build, verify and push (${{ matrix.arch }})
         run: |
           SHA_SHORT="${{ needs.prepare.outputs.sha_short }}"
+          SOURCE_REVISION="$(git rev-parse HEAD)"
+          test -z "$(git status --porcelain)"
+          IMAGE="${ECR_REGISTRY}/${SERVICE_NAME}:${SHA_SHORT}-${{ matrix.arch }}"
           docker buildx build \
             --platform ${{ matrix.platform }} \
             --cache-from type=gha,scope=${SERVICE_NAME}-${{ matrix.arch }} \
             --cache-to type=gha,scope=${SERVICE_NAME}-${{ matrix.arch }},mode=max \
             --provenance=false \
-            -t "${ECR_REGISTRY}/${SERVICE_NAME}:${SHA_SHORT}-${{ matrix.arch }}" \
-            --push \
+            --build-arg "SOURCE_REVISION=${SOURCE_REVISION}" \
+            -t "$IMAGE" \
+            --load \
             -f "${DOCKERFILE_PATH}" \
             .
+          sh scripts/verify_container.sh "$IMAGE" "$SOURCE_REVISION"
+          docker push "$IMAGE"
 
   manifest:
     name: Create Multi-Arch Manifest

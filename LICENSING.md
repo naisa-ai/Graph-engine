@@ -54,6 +54,56 @@ establish compliance for every distributed binary, container, or historical
 artifact. A release must be checked against its own source and notices.
 See the [GNU GPL distribution FAQ](https://www.gnu.org/licenses/gpl-faq.en.html#DistributeExtendedBinary).
 
+## Container source and notices
+
+The production Dockerfile includes the following files under
+`/usr/share/doc/graph-engine/` in each image:
+
+- `COPYING`: the complete GPLv3 text for the combined server distribution.
+- `NOTICE`: copyright, license scope, warranty and source extraction instructions.
+- `THIRD_PARTY_NOTICES`: dependency copyright and license texts, including nested
+  notices, and the independent MIT notices for the clients and interfaces.
+- `BUILD_INFO.json`: application source hashes, optional source commit, compiler
+  and build settings, exact Go/igraph/Debian versions and artifact checksums.
+- `corresponding-source.tar.gz`: the application source and build scripts, exact
+  Go module source archives, Go toolchain/standard-library source, igraph release
+  source, and matching source packages for every installed runtime Debian package.
+
+Images can remain in a private registry. Deliver this bundle with each image;
+recipients do not need registry credentials to extract source from their copy:
+
+```sh
+container=$(docker create --entrypoint /bin/true YOUR_IMAGE)
+docker cp "$container:/usr/share/doc/graph-engine" ./graph-engine-doc
+docker rm "$container"
+tar -xzf graph-engine-doc/corresponding-source.tar.gz -C ./graph-engine-doc
+```
+
+Read `REBUILD.md` inside the archive for the build procedure. The source archive
+contains original dependency notices as well as the aggregated notices beside it.
+It excludes the historical tracked executables and Git credentials. The archive
+increases image size because it includes runtime package sources as well as the
+server's dependencies.
+
+Production CI passes the actual checked-out commit into the build, verifies source,
+notices, server and igraph checksums before pushing, and checks existing images
+before reusing them. An unavailable exact Debian source version fails the build;
+refresh the base image/package indexes or restore that exact source in a trusted
+Debian source repository. Do not substitute a newer package's source.
+
+Local builds without `SOURCE_REVISION` record a source snapshot with per-file
+hashes and a null commit, rather than claiming to represent a clean Git commit.
+To check an image without executing its server, run:
+
+```sh
+sh scripts/verify_container.sh YOUR_IMAGE OPTIONAL_FULL_COMMIT_SHA
+```
+
+Keep the entire bundle when delivering an image or extracting its server binary.
+Supply installation information separately if the delivery is a GPLv3 User Product
+that requires it. Packaging new images does not establish matching source for
+historical deliveries or the old tracked `build/graph-engined` executable.
+
 ## Separate applications
 
 The MIT clients make gRPC calls to the Graph Engine server in a separate
