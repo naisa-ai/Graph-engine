@@ -30,6 +30,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     cmake \
     ninja-build \
     curl \
+    python3 \
     libxml2-dev \
     libglpk-dev \
     libblas-dev \
@@ -41,7 +42,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 #   - IGRAPH_ENABLE_TLS=ON: Enable thread-local storage for thread safety
 #   - IGRAPH_USE_INTERNAL_ARPACK=ON: Use bundled ARPACK (external ARPACK is not thread-safe)
 #   - IGRAPH_OPENMP_SUPPORT=ON: Enable OpenMP parallelization
-RUN curl -sL https://github.com/igraph/igraph/releases/download/${IGRAPH_VERSION}/igraph-${IGRAPH_VERSION}.tar.gz | tar xz \
+RUN mkdir -p /source-inputs \
+    && curl --fail --location --retry 3 \
+        https://github.com/igraph/igraph/releases/download/${IGRAPH_VERSION}/igraph-${IGRAPH_VERSION}.tar.gz \
+        -o /source-inputs/igraph-${IGRAPH_VERSION}.tar.gz \
+    && tar xzf /source-inputs/igraph-${IGRAPH_VERSION}.tar.gz \
     && cd igraph-${IGRAPH_VERSION} \
     && mkdir build && cd build \
     && cmake .. -GNinja \
@@ -77,33 +82,37 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Ensure go.mod is tidy
-RUN go mod tidy
-
 # Build with CGO enabled
 ARG VERSION=dev
 ARG BUILD_TIME=unknown
+ARG SOURCE_REVISION=""
 RUN CGO_ENABLED=1 \
     CGO_CFLAGS="$(pkg-config --cflags igraph)" \
     CGO_LDFLAGS="$(pkg-config --libs igraph)" \
-    go build \
+    go build -mod=readonly \
     -ldflags="-s -w -X 'github.com/naisa-ai/graph-engine/internal/api/grpc.Version=${VERSION}' -X 'github.com/naisa-ai/graph-engine/internal/api/grpc.BuildTime=${BUILD_TIME}'" \
     -tags cgo \
     -o /app/graph-engined \
     ./cmd/graph-engined
 
 # Verify the binary was built with igraph support
-RUN ldd /app/graph-engined | grep -q igraph && echo "igraph linked successfully" || echo "Warning: igraph not linked"
+RUN ldd /app/graph-engined | grep -q igraph
+RUN python3 scripts/package_compliance.py prepare \
+    --source /app --work /compliance-work --binary /app/graph-engined \
+    --igraph-source /source-inputs/igraph-${IGRAPH_VERSION}.tar.gz \
+    --igraph-version "${IGRAPH_VERSION}" --revision "${SOURCE_REVISION}" \
+    --version "${VERSION}" --build-time "${BUILD_TIME}"
 
 # Runtime stage
-FROM debian:bookworm-slim
+FROM debian:bookworm-slim AS runtime-base
 
 WORKDIR /app
 
 # Install runtime dependencies
 # Note: We copy the igraph shared library from builder instead of using libigraph3
 # to ensure we have the thread-safe version
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get upgrade -y \
+    && apt-get install -y --no-install-recommends \
     ca-certificates \
     tzdata \
     libxml2 \
@@ -130,6 +139,28 @@ COPY config.yaml /app/config.yaml
 # Set ownership
 RUN chown -R appuser:appuser /app
 
+# Freeze the actual runtime inventory before adding source-collection tools.
+RUN dpkg-query -W -f='${binary:Package}\t${Version}\t${source:Package}\t${source:Version}\n' \
+    > /runtime-packages.tsv
+
+# Collection tools stay in this intermediate stage; they are not runtime packages.
+FROM runtime-base AS compliance
+RUN cp -a /usr/share/doc /runtime-doc \
+    && cp -a /usr/share/common-licenses /runtime-common-licenses \
+    && sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/debian.sources \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends python3 dpkg-dev ca-certificates
+COPY --from=builder /compliance-work /compliance-work
+RUN python3 /compliance-work/source/graph-engine/scripts/package_compliance.py finish \
+    --work /compliance-work --output /compliance --binary /app/graph-engined \
+    --inventory /runtime-packages.tsv --doc-root /runtime-doc \
+    --common-licenses /runtime-common-licenses
+
+FROM runtime-base AS runtime
+COPY --from=compliance /compliance /usr/share/doc/graph-engine/
+RUN rm /runtime-packages.tsv
+ARG SOURCE_REVISION=""
+
 # Switch to non-root user
 USER appuser
 
@@ -144,6 +175,8 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
 LABEL org.opencontainers.image.title="graph-engine"
 LABEL org.opencontainers.image.description="Graph Engine Service with thread-safe igraph support"
 LABEL org.opencontainers.image.source="https://github.com/naisa-ai/graph-engine"
+LABEL org.opencontainers.image.licenses="GPL-3.0-only"
+LABEL org.opencontainers.image.revision="${SOURCE_REVISION}"
 
 # Run the service
 ENTRYPOINT ["/app/graph-engined"]

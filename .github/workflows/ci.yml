@@ -57,12 +57,8 @@ jobs:
           mkdir -p build
           go build -ldflags="-s -w" -o build/graph-engined ./cmd/graph-engined
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: graph-engined
-          path: build/graph-engined
-          retention-days: 7
+      # Distributable server images, including matching source and notices,
+      # are produced and verified by graph-engine.ci.yml.
 
   test:
     name: Test
