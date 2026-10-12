@@ -12,7 +12,7 @@
 # =============================================================================
 
 # Build stage
-FROM golang:1.24-bookworm AS builder
+FROM golang:1.24-trixie AS builder
 
 WORKDIR /app
 
@@ -104,7 +104,7 @@ RUN python3 scripts/package_compliance.py prepare \
     --version "${VERSION}" --build-time "${BUILD_TIME}"
 
 # Runtime stage
-FROM debian:bookworm-slim AS runtime-base
+FROM debian:trixie-slim AS runtime-base
 
 WORKDIR /app
 
