@@ -12,7 +12,7 @@
 # =============================================================================
 
 # Build stage
-FROM golang:1.24-bookworm AS builder
+FROM golang:1.26-bookworm AS builder
 
 WORKDIR /app
 
@@ -120,6 +120,7 @@ RUN apt-get update && apt-get upgrade -y \
     libblas3 \
     liblapack3 \
     libgomp1 \
+    && apt-get install -y --no-install-recommends --only-upgrade ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
     && rm -rf /tmp/* /var/tmp/*
 

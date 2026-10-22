@@ -15,7 +15,7 @@
 # The base image is tagged as: graph-engine-base:latest
 # =============================================================================
 
-FROM golang:1.24-bookworm
+FROM golang:1.26-bookworm
 
 WORKDIR /app
 

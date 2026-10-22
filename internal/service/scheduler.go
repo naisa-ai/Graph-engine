@@ -300,10 +300,21 @@ func (s *Scheduler) dispatchPending() {
 	}
 }
 
+// releaseSlot frees a semaphore slot, then wakes the dispatcher. The order
+// matters: signaling while the slot is still held lets the dispatcher wake,
+// find no free slot, and go back to sleep, stranding queued jobs.
+func (s *Scheduler) releaseSlot() {
+	<-s.sem
+	select {
+	case s.queueCh <- struct{}{}:
+	default:
+	}
+}
+
 // executeJob runs a job.
 func (s *Scheduler) executeJob(job *Job) {
 	defer s.wg.Done()
-	defer func() { <-s.sem }() // Release semaphore
+	defer s.releaseSlot()
 
 	// Update stats
 	atomic.AddInt64(&s.activeJobs, 1)
@@ -375,12 +386,6 @@ func (s *Scheduler) executeJob(job *Job) {
 		// Already closed
 	default:
 		close(job.done)
-	}
-
-	// Try to dispatch more jobs
-	select {
-	case s.queueCh <- struct{}{}:
-	default:
 	}
 }
 
@@ -475,7 +480,7 @@ func (s *Scheduler) RunSync(ctx context.Context, execFn func(ctx context.Context
 	// Acquire semaphore with context
 	select {
 	case s.sem <- struct{}{}:
-		defer func() { <-s.sem }()
+		defer s.releaseSlot()
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
@@ -505,7 +510,7 @@ func (s *Scheduler) TryAcquire() func() {
 		return func() {
 			atomic.AddInt64(&s.activeJobs, -1)
 			metrics.DecActiveJobs()
-			<-s.sem
+			s.releaseSlot()
 		}
 	default:
 		return nil
@@ -522,7 +527,7 @@ func (s *Scheduler) Acquire(ctx context.Context) (func(), error) {
 		return func() {
 			atomic.AddInt64(&s.activeJobs, -1)
 			metrics.DecActiveJobs()
-			<-s.sem
+			s.releaseSlot()
 		}, nil
 	case <-ctx.Done():
 		return nil, fmt.Errorf("failed to acquire scheduler slot: %w", ctx.Err())

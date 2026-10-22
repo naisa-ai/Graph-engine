@@ -7,7 +7,7 @@
 # Build: docker build -f e2e/Dockerfile.go-base -t graph-engine-e2e-go-base .
 # =============================================================================
 
-FROM golang:1.24-alpine
+FROM golang:1.26-alpine
 
 WORKDIR /build
 
