@@ -13,8 +13,10 @@ import (
 	grpcserver "github.com/naisa-ai/graph-engine/internal/api/grpc"
 	"github.com/naisa-ai/graph-engine/internal/service"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -24,7 +26,7 @@ func TestComponentsResultBoundedStream(t *testing.T) {
 		count          int
 		chunks         bool
 		membershipOnly bool
-	}{{"large_negotiated", 500000, true, false}, {"legacy_single", 7, false, false}, {"empty_negotiated", 0, true, false}, {"restored_membership_only", 500000, true, true}, {"legacy_membership_only", 7, false, true}} {
+	}{{"large_negotiated", 500000, true, false}, {"legacy_single", 7, false, false}, {"empty_negotiated", 0, true, false}, {"missing_node_ids_negotiated", 500000, true, true}, {"missing_node_ids_unnegotiated", 7, false, true}} {
 		t.Run(tc.name, func(t *testing.T) {
 			store := service.NewResultStore(4, 128<<20, time.Minute)
 			defer store.Close()
@@ -37,7 +39,7 @@ func TestComponentsResultBoundedStream(t *testing.T) {
 				result.MembershipU32[n] = uint32(n % 7)
 			}
 			if tc.membershipOnly {
-				result.NodeIDsU64 = nil // snapshots written before node IDs were persisted
+				result.NodeIDsU64 = nil // malformed result: assignments have no node mapping
 			}
 			if err := store.Store(result); err != nil {
 				t.Fatal(err)
@@ -84,6 +86,15 @@ func TestComponentsResultBoundedStream(t *testing.T) {
 					break
 				}
 				if err != nil {
+					if tc.membershipOnly {
+						if status.Code(err) != codes.Internal || status.Convert(err).Message() != "invalid components result: parallel arrays differ" {
+							t.Fatalf("missing node IDs: got %v, want explicit parallel-array error", err)
+						}
+						if rows != 0 || chunks != 0 || done {
+							t.Fatal("malformed result emitted data or completion before failing")
+						}
+						return
+					}
 					t.Fatalf("bounded default gRPC receive failed: %v", err)
 				}
 				if tc.chunks && proto.Size(chunk) > 1<<20 {
@@ -101,19 +112,13 @@ func TestComponentsResultBoundedStream(t *testing.T) {
 					}
 					rows += len(data.NodeIdsU64)
 				}
-				if data := chunk.GetU32(); data != nil {
-					if !tc.membershipOnly || data.Name != "membership" {
-						t.Fatal("unexpected membership-only frame")
-					}
-					chunks++
-					for i, group := range data.Values {
-						if group != uint32((rows+i)%7) {
-							t.Fatal("membership-only stream lost rows")
-						}
-					}
-					rows += len(data.Values)
+				if chunk.GetU32() != nil {
+					t.Fatal("components result unexpectedly emitted membership-only data")
 				}
 				done = done || chunk.GetDone()
+			}
+			if tc.membershipOnly {
+				t.Fatal("missing node IDs must fail instead of completing successfully")
 			}
 			if rows != tc.count || !done {
 				t.Fatalf("incomplete stream: rows=%d expected=%d done=%v", rows, tc.count, done)
