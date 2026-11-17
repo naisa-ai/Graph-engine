@@ -4,9 +4,49 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 )
+
+func TestPersistenceMembershipNodeIDs(t *testing.T) {
+	for _, kind := range []AlgoKind{AlgoKindComponents, AlgoKindCommunities} {
+		for _, compressed := range []bool{false, true} {
+			t.Run(string(kind)+"/"+map[bool]string{false: "plain", true: "compressed"}[compressed], func(t *testing.T) {
+				logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+				config := PersistenceConfig{Enabled: true, DataDir: t.TempDir(), MaxSnapshots: 2, CompressSnapshots: compressed}
+				store := NewResultStore(10, 1<<20, time.Minute)
+				defer store.Close()
+				result := NewAlgoResult("version", kind, "membership")
+				result.NodeIDsU64 = []uint64{1 << 56, 1<<56 + 7}
+				result.MembershipU32 = []uint32{0, 1}
+				if err := store.Store(result); err != nil {
+					t.Fatal(err)
+				}
+				writer := NewPersistenceManager(config, logger, nil, store, nil)
+				defer writer.Stop()
+				if err := writer.SaveSnapshot(); err != nil {
+					t.Fatal(err)
+				}
+				restored := NewResultStore(10, 1<<20, time.Minute)
+				defer restored.Close()
+				reader := NewPersistenceManager(config, logger, nil, restored, nil)
+				defer reader.Stop()
+				if err := reader.LoadSnapshot(); err != nil {
+					t.Fatal(err)
+				}
+				got, err := restored.Get(result.ID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer got.Unpin()
+				if !reflect.DeepEqual(got.NodeIDsU64, result.NodeIDsU64) || !reflect.DeepEqual(got.MembershipU32, result.MembershipU32) {
+					t.Fatalf("snapshot lost membership mapping: nodes=%v membership=%v", got.NodeIDsU64, got.MembershipU32)
+				}
+			})
+		}
+	}
+}
 
 func TestPersistenceManager_SaveAndLoad(t *testing.T) {
 	// Create temp directory

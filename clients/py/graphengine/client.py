@@ -407,18 +407,22 @@ class GraphEngineClient:
         except grpc.RpcError as e:
             raise wrap_grpc_error(e)
 
-    def _get_result_chunks(self, result: ResultRef) -> Iterator[gepb.ResultChunk]:
-        """Get result chunks (internal)."""
+    def _get_result_chunks(self, result: ResultRef, *, components_chunks: bool = False) -> Iterator[gepb.ResultChunk]:
+        """Stream results; typed membership collectors opt into bounded frames."""
+        call = None
         try:
+            headers = self._get_metadata()
+            if components_chunks:
+                headers = [(k, v) for k, v in headers if k.lower() != "x-ge-components-chunks"]
+                headers.append(("x-ge-components-chunks", "1"))
             req = gepb.GetResultRequest(result=gepb.ResultRef(result_id=result.result_id))
-            for chunk in self._engine_stub.GetResult(
-                req,
-                timeout=self._timeout,
-                metadata=self._get_metadata(),
-            ):
-                yield chunk
+            call = self._engine_stub.GetResult(req, timeout=self._timeout, metadata=headers)
+            yield from call
         except grpc.RpcError as e:
             raise wrap_grpc_error(e)
+        finally:
+            if call is not None:
+                call.cancel()
 
     # =========================================================================
     # Algorithm Methods
@@ -555,20 +559,40 @@ class GraphEngineClient:
         return self._collect_components_result(result)
 
     def _collect_components_result(self, result: ResultRef) -> ComponentsResult:
-        """Collect components result from chunks."""
+        """Collect and validate structured chunks, including older server formats."""
         comp_result = ComponentsResult()
-        for chunk in self._get_result_chunks(result):
-            if chunk.HasField("components"):
-                cr = chunk.components
-                comp_result.node_ids = list(cr.node_ids_u64)
-                comp_result.membership = list(cr.membership)
-                comp_result.num_components = cr.num_components
-            # Fallback for legacy u32 buffer format (pre node_ids)
-            elif chunk.HasField("header"):
-                comp_result.num_components = int(chunk.header.meta.get("num_components", "0"))
-            elif chunk.HasField("u32"):
-                comp_result.membership.extend(chunk.u32.values)
-        return comp_result
+        groups = set()
+        done = seen = structured = legacy = False
+        chunks = self._get_result_chunks(result, components_chunks=True)
+        try:
+            for chunk in chunks:
+                if done:
+                    raise GraphEngineError("Invalid membership result: frame after Done")
+                if chunk.HasField("components"):
+                    cr = chunk.components
+                    if legacy or len(cr.node_ids_u64) != len(cr.membership):
+                        raise GraphEngineError("Invalid membership result: mixed format or mismatched arrays")
+                    seen = structured = True
+                    comp_result.num_components = max(comp_result.num_components, cr.num_components)
+                    comp_result.node_ids.extend(cr.node_ids_u64)
+                    comp_result.membership.extend(cr.membership)
+                    groups.update(cr.membership)
+                elif chunk.HasField("header"):
+                    comp_result.num_components = max(comp_result.num_components, int(chunk.header.meta.get("num_components", "0")))
+                elif chunk.HasField("u32") and chunk.u32.name == "membership":
+                    if structured:
+                        raise GraphEngineError("Invalid membership result: mixed format")
+                    seen = legacy = True
+                    comp_result.membership.extend(chunk.u32.values)
+                    groups.update(chunk.u32.values)
+                done = chunk.HasField("done") and chunk.done
+            if not seen or not done:
+                raise GraphEngineError("Incomplete membership result stream")
+            if not comp_result.num_components:
+                comp_result.num_components = len(groups)
+            return comp_result
+        finally:
+            chunks.close()
 
     def distances(
         self,

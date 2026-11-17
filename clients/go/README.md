@@ -266,3 +266,23 @@ if err != nil {
 ## License
 
 MIT - See [LICENSE](LICENSE)
+
+## Large component and community results
+
+Typed component/community helpers automatically negotiate bounded structured
+membership frames (`x-ge-components-chunks: 1`). They preserve all node IDs and
+memberships across frames without increasing gRPC's default receive limit.
+The server sends at most 65,536 rows per structured frame for opted-in callers.
+
+Collectors require a completed stream and reject mismatched arrays, mixed
+structured/legacy membership formats, and frames after Done. They bulk-copy rows
+in wire order, leaving node uniqueness to the producer rather than building an
+additional per-node deduplication index.
+They cancel the result RPC on failure. Small single-frame results from older
+servers and legacy membership-only U32 buffers remain supported. Older clients
+retain single-frame server behavior; a new client cannot make an older server
+split an oversized message. Upgrade both sides for large results.
+
+Advanced callers that submit algorithms with `RunAndWait` can collect the returned
+reference using `GetComponentsResult(ctx, resultRef)`. The result reference remains
+caller-owned; cancelling collection closes its RPC without deleting that result.
