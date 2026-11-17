@@ -2,6 +2,7 @@ package grpc_test
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"net"
@@ -45,13 +46,23 @@ func TestComponentsResultBoundedStream(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			go server.Serve(lis)
-			defer server.Stop()
+			serveErr := make(chan error, 1)
+			go func() { serveErr <- server.Serve(lis) }()
+			defer func() {
+				server.Stop()
+				if err := <-serveErr; err != nil && !errors.Is(err, grpc.ErrServerStopped) {
+					t.Errorf("serve test gRPC server: %v", err)
+				}
+			}()
 			conn, err := grpc.NewClient(lis.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer conn.Close()
+			defer func() {
+				if err := conn.Close(); err != nil {
+					t.Errorf("close test gRPC connection: %v", err)
+				}
+			}()
 			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 			defer cancel()
 			if tc.chunks {
