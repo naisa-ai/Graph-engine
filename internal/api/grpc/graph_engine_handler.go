@@ -1682,7 +1682,10 @@ func (h *GraphEngineHandler) GetResult(req *gepb.GetResultRequest, stream gepb.G
 	// Send data based on algorithm type
 	switch result.AlgoKind {
 	case service.AlgoKindComponents, service.AlgoKindCommunities:
-		if len(result.NodeIDsU64) != len(result.MembershipU32) {
+		// Snapshots written before node IDs were persisted retain membership only.
+		// Keep them readable through the existing legacy U32 wire format.
+		membershipOnly := len(result.NodeIDsU64) == 0 && len(result.MembershipU32) > 0
+		if !membershipOnly && len(result.NodeIDsU64) != len(result.MembershipU32) {
 			return status.Error(codes.Internal, "invalid components result: parallel arrays differ")
 		}
 		// Send components/communities result with node IDs for proper mapping
@@ -1695,24 +1698,29 @@ func (h *GraphEngineHandler) GetResult(req *gepb.GetResultRequest, stream gepb.G
 		// Legacy collectors replace, rather than append, structured frames.
 		// Chunk only for callers that explicitly support it. Even maximum-size
 		// uint64/uint32 varints fit below 1 MiB per 65,536-row frame.
-		rowsPerChunk := max(1, len(result.NodeIDsU64))
+		rowsPerChunk := max(1, len(result.MembershipU32))
 		md, _ := metadata.FromIncomingContext(stream.Context())
 		if values := md.Get("x-ge-components-chunks"); len(values) == 1 && values[0] == "1" {
 			rowsPerChunk = 65536
 		}
-		for start := 0; start == 0 || start < len(result.NodeIDsU64); start += rowsPerChunk {
+		for start := 0; start == 0 || start < len(result.MembershipU32); start += rowsPerChunk {
 			if err := stream.Context().Err(); err != nil {
 				return status.FromContextError(err).Err()
 			}
-			end := min(start+rowsPerChunk, len(result.NodeIDsU64))
-			chunk := &gepb.ResultChunk{
-				Payload: &gepb.ResultChunk_Components{
+			end := min(start+rowsPerChunk, len(result.MembershipU32))
+			chunk := &gepb.ResultChunk{}
+			if membershipOnly {
+				chunk.Payload = &gepb.ResultChunk_U32{
+					U32: &gepb.U32Buffer{Name: "membership", Values: result.MembershipU32[start:end]},
+				}
+			} else {
+				chunk.Payload = &gepb.ResultChunk_Components{
 					Components: &gepb.ComponentsResult{
 						NodeIdsU64:    result.NodeIDsU64[start:end],
 						Membership:    result.MembershipU32[start:end],
 						NumComponents: numComponents,
 					},
-				},
+				}
 			}
 			if err := stream.Send(chunk); err != nil {
 				return status.Errorf(codes.Internal, "failed to send components: %v", err)

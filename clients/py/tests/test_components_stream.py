@@ -4,6 +4,7 @@
 """Public SDK membership collection over real gRPC, without application dependencies."""
 from concurrent.futures import ThreadPoolExecutor
 import threading
+import re
 import time
 
 import grpc
@@ -11,6 +12,7 @@ import pytest
 
 from graphengine import GraphEngineClient
 from graphengine.types import GraphRef
+from graphengine.exceptions import GraphEngineError
 from graphengine.gen import graph_engine_pb2 as pb
 from graphengine.gen import graph_engine_pb2_grpc as rpc
 
@@ -81,20 +83,22 @@ def test_large_public_algorithms(connect, method):
 
 
 @pytest.mark.parametrize("frames,count,error", [
-    ([members([1, 2], [7, 8]), pb.ResultChunk(done=True)], 2, False),
-    ([members(), pb.ResultChunk(done=True)], 0, False),
-    ([members([1], [7]), members([2], [8]), pb.ResultChunk(done=True)], 2, False),
-    ([pb.ResultChunk(u32=pb.U32Buffer(name="membership", values=[7])), pb.ResultChunk(u32=pb.U32Buffer(name="membership", values=[8])), pb.ResultChunk(done=True)], 2, False),
-    ([members([1], [7])], 0, True),
-    ([pb.ResultChunk(done=True)], 0, True),
-    ([members([1, 2], [7]), pb.ResultChunk(done=True)], 0, True),
-    ([members(), pb.ResultChunk(done=True), members()], 0, True),
-    ([members([1], [7]), members([1], [8]), pb.ResultChunk(done=True)], 0, True),
+    ([members([1, 2], [7, 8]), pb.ResultChunk(done=True)], 2, None),
+    ([members(), pb.ResultChunk(done=True)], 0, None),
+    ([members([1], [7]), members([2], [8]), pb.ResultChunk(done=True)], 2, None),
+    ([pb.ResultChunk(u32=pb.U32Buffer(name="membership", values=[7])), pb.ResultChunk(u32=pb.U32Buffer(name="membership", values=[8])), pb.ResultChunk(done=True)], 2, None),
+    ([members([1], [7])], 0, "Incomplete membership result stream"),
+    ([pb.ResultChunk(done=True)], 0, "Incomplete membership result stream"),
+    ([members([1, 2], [7]), pb.ResultChunk(done=True)], 0, "Invalid membership result: mixed format or mismatched arrays"),
+    ([members([1], [7]), pb.ResultChunk(u32=pb.U32Buffer(name="membership", values=[8])), pb.ResultChunk(done=True)], 0, "Invalid membership result: mixed format"),
+    ([pb.ResultChunk(u32=pb.U32Buffer(name="membership", values=[8])), members([1], [7]), pb.ResultChunk(done=True)], 0, "Invalid membership result: mixed format or mismatched arrays"),
+    ([members(), pb.ResultChunk(done=True), members()], 0, "Invalid membership result: frame after Done"),
+    ([members([1], [7]), members([1], [8]), pb.ResultChunk(done=True)], 2, None),
 ])
 def test_validation_and_compatibility(connect, frames, count, error):
     client = connect(MembershipServer(frames))
     if error:
-        with pytest.raises(Exception):
+        with pytest.raises(GraphEngineError, match="^" + re.escape(error) + "$"):
             client.communities(GraphRef("public"))
     else:
         result = client.communities(GraphRef("public"))
@@ -104,7 +108,7 @@ def test_validation_and_compatibility(connect, frames, count, error):
 def test_rejection_cancels_rpc(connect):
     service = MembershipServer([members([1, 2], [7])], wait=True)
     start = time.monotonic()
-    with pytest.raises(Exception):
+    with pytest.raises(GraphEngineError, match="mismatched arrays"):
         connect(service).communities(GraphRef("public"))
     assert time.monotonic() - start < 1
     assert service.cancelled.wait(1)

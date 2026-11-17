@@ -20,10 +20,11 @@ import (
 
 func TestComponentsResultBoundedStream(t *testing.T) {
 	for _, tc := range []struct {
-		name   string
-		count  int
-		chunks bool
-	}{{"large_negotiated", 500000, true}, {"legacy_single", 7, false}, {"empty_negotiated", 0, true}} {
+		name           string
+		count          int
+		chunks         bool
+		membershipOnly bool
+	}{{"large_negotiated", 500000, true, false}, {"legacy_single", 7, false, false}, {"empty_negotiated", 0, true, false}, {"restored_membership_only", 500000, true, true}, {"legacy_membership_only", 7, false, true}} {
 		t.Run(tc.name, func(t *testing.T) {
 			store := service.NewResultStore(4, 128<<20, time.Minute)
 			defer store.Close()
@@ -34,6 +35,9 @@ func TestComponentsResultBoundedStream(t *testing.T) {
 			for n := range result.NodeIDsU64 {
 				result.NodeIDsU64[n] = uint64(n) + (1 << 56)
 				result.MembershipU32[n] = uint32(n % 7)
+			}
+			if tc.membershipOnly {
+				result.NodeIDsU64 = nil // snapshots written before node IDs were persisted
 			}
 			if err := store.Store(result); err != nil {
 				t.Fatal(err)
@@ -96,6 +100,18 @@ func TestComponentsResultBoundedStream(t *testing.T) {
 						}
 					}
 					rows += len(data.NodeIdsU64)
+				}
+				if data := chunk.GetU32(); data != nil {
+					if !tc.membershipOnly || data.Name != "membership" {
+						t.Fatal("unexpected membership-only frame")
+					}
+					chunks++
+					for i, group := range data.Values {
+						if group != uint32((rows+i)%7) {
+							t.Fatal("membership-only stream lost rows")
+						}
+					}
+					rows += len(data.Values)
 				}
 				done = done || chunk.GetDone()
 			}

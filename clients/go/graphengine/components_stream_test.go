@@ -102,7 +102,7 @@ func TestMembershipPublicAlgorithmsLarge(t *testing.T) {
 		t.Run(method, func(t *testing.T) {
 			seen := make(chan metadata.MD, 1)
 			c := membershipClient(t, &membershipServer{large: true, seen: seen})
-			ctx := metadata.NewOutgoingContext(context.Background(), metadata.Pairs("x-ge-components-chunks", "old", "x-request-id", "caller"))
+			ctx := metadata.NewOutgoingContext(context.Background(), metadata.Pairs("x-ge-components-chunks", "old", "x-request-id", "caller", "authorization", "caller-token"))
 			var result *ComponentsResult
 			var err error
 			switch method {
@@ -137,24 +137,30 @@ func TestMembershipValidationAndCompatibility(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
 		frames    []*gepb.ResultChunk
-		wantError bool
+		wantError string
 		count     int
 	}{
-		{"legacy_single", []*gepb.ResultChunk{members([]uint64{1, 2}, []uint32{7, 8}), endMembers()}, false, 2},
-		{"empty", []*gepb.ResultChunk{members(nil, nil), endMembers()}, false, 0},
-		{"multiple", []*gepb.ResultChunk{members([]uint64{1}, []uint32{7}), members([]uint64{2}, []uint32{8}), endMembers()}, false, 2},
-		{"legacy_buffers", []*gepb.ResultChunk{{Payload: &gepb.ResultChunk_U32{U32: &gepb.U32Buffer{Name: "membership", Values: []uint32{7}}}}, {Payload: &gepb.ResultChunk_U32{U32: &gepb.U32Buffer{Name: "membership", Values: []uint32{8}}}}, endMembers()}, false, 2},
-		{"truncated", []*gepb.ResultChunk{members([]uint64{1}, []uint32{7})}, true, 0},
-		{"no_data", []*gepb.ResultChunk{endMembers()}, true, 0},
-		{"mismatch", []*gepb.ResultChunk{members([]uint64{1, 2}, []uint32{7}), endMembers()}, true, 0},
-		{"trailing", []*gepb.ResultChunk{members(nil, nil), endMembers(), members(nil, nil)}, true, 0},
-		{"conflict", []*gepb.ResultChunk{members([]uint64{1}, []uint32{7}), members([]uint64{1}, []uint32{8}), endMembers()}, true, 0},
+		{"legacy_single", []*gepb.ResultChunk{members([]uint64{1, 2}, []uint32{7, 8}), endMembers()}, "", 2},
+		{"empty", []*gepb.ResultChunk{members(nil, nil), endMembers()}, "", 0},
+		{"multiple", []*gepb.ResultChunk{members([]uint64{1}, []uint32{7}), members([]uint64{2}, []uint32{8}), endMembers()}, "", 2},
+		{"legacy_buffers", []*gepb.ResultChunk{{Payload: &gepb.ResultChunk_U32{U32: &gepb.U32Buffer{Name: "membership", Values: []uint32{7}}}}, {Payload: &gepb.ResultChunk_U32{U32: &gepb.U32Buffer{Name: "membership", Values: []uint32{8}}}}, endMembers()}, "", 2},
+		{"truncated", []*gepb.ResultChunk{members([]uint64{1}, []uint32{7})}, "incomplete membership result stream", 0},
+		{"no_data", []*gepb.ResultChunk{endMembers()}, "incomplete membership result stream", 0},
+		{"mismatch", []*gepb.ResultChunk{members([]uint64{1, 2}, []uint32{7}), endMembers()}, "invalid membership result: mixed format or mismatched arrays", 0},
+		{"structured_then_legacy", []*gepb.ResultChunk{members([]uint64{1}, []uint32{7}), {Payload: &gepb.ResultChunk_U32{U32: &gepb.U32Buffer{Name: "membership", Values: []uint32{8}}}}, endMembers()}, "invalid membership result: mixed format", 0},
+		{"legacy_then_structured", []*gepb.ResultChunk{{Payload: &gepb.ResultChunk_U32{U32: &gepb.U32Buffer{Name: "membership", Values: []uint32{8}}}}, members([]uint64{1}, []uint32{7}), endMembers()}, "invalid membership result: mixed format or mismatched arrays", 0},
+		{"trailing", []*gepb.ResultChunk{members(nil, nil), endMembers(), members(nil, nil)}, "invalid membership result: frame after Done", 0},
+		{"repeated_node_rows", []*gepb.ResultChunk{members([]uint64{1}, []uint32{7}), members([]uint64{1}, []uint32{8}), endMembers()}, "", 2},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			c := membershipClient(t, &membershipServer{frames: tc.frames})
 			r, err := c.Communities(context.Background(), &gepb.GraphRef{GraphName: "public"})
-			if (err != nil) != tc.wantError {
-				t.Fatalf("error=%v wantError=%v", err, tc.wantError)
+			if tc.wantError != "" {
+				if err == nil || err.Error() != tc.wantError {
+					t.Fatalf("error=%v want=%q", err, tc.wantError)
+				}
+			} else if err != nil {
+				t.Fatal(err)
 			}
 			if err == nil && len(r.Membership) != tc.count {
 				t.Fatalf("lost rows: %v", r)

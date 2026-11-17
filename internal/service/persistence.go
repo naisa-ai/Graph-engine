@@ -93,6 +93,7 @@ type AlgoResultSnapshot struct {
 	Meta       map[string]string `json:"meta"`
 
 	// Result data
+	NodeIDsU64    []uint64  `json:"node_ids_u64,omitempty"`
 	MembershipU32 []uint32  `json:"membership_u32,omitempty"`
 	PathVertices  []uint64  `json:"path_vertices,omitempty"`
 	PathEdges     []uint64  `json:"path_edges,omitempty"`
@@ -291,6 +292,7 @@ func (pm *PersistenceManager) buildSnapshot() *SnapshotData {
 				ParamsHash:    result.ParamsHash,
 				CreatedAt:     result.CreatedAt,
 				Meta:          result.Meta,
+				NodeIDsU64:    result.NodeIDsU64,
 				MembershipU32: result.MembershipU32,
 				PathVertices:  result.PathVertices,
 				PathEdges:     result.PathEdges,
@@ -515,6 +517,7 @@ func (pm *PersistenceManager) restoreSnapshot(snapshot *SnapshotData) error {
 				ParamsHash:    rs.ParamsHash,
 				CreatedAt:     rs.CreatedAt,
 				Meta:          rs.Meta,
+				NodeIDsU64:    rs.NodeIDsU64,
 				MembershipU32: rs.MembershipU32,
 				PathVertices:  rs.PathVertices,
 				PathEdges:     rs.PathEdges,

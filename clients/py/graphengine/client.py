@@ -561,7 +561,6 @@ class GraphEngineClient:
     def _collect_components_result(self, result: ResultRef) -> ComponentsResult:
         """Collect and validate structured chunks, including older server formats."""
         comp_result = ComponentsResult()
-        nodes = {}
         groups = set()
         done = seen = structured = legacy = False
         chunks = self._get_result_chunks(result, components_chunks=True)
@@ -575,15 +574,9 @@ class GraphEngineClient:
                         raise GraphEngineError("Invalid membership result: mixed format or mismatched arrays")
                     seen = structured = True
                     comp_result.num_components = max(comp_result.num_components, cr.num_components)
-                    for node, group in zip(cr.node_ids_u64, cr.membership):
-                        if node in nodes:
-                            if nodes[node] != group:
-                                raise GraphEngineError(f"Invalid membership result: conflicting node {node}")
-                            continue
-                        nodes[node] = group
-                        groups.add(group)
-                        comp_result.node_ids.append(node)
-                        comp_result.membership.append(group)
+                    comp_result.node_ids.extend(cr.node_ids_u64)
+                    comp_result.membership.extend(cr.membership)
+                    groups.update(cr.membership)
                 elif chunk.HasField("header"):
                     comp_result.num_components = max(comp_result.num_components, int(chunk.header.meta.get("num_components", "0")))
                 elif chunk.HasField("u32") and chunk.u32.name == "membership":

@@ -628,7 +628,10 @@ func (c *Client) GetComponentsResult(ctx context.Context, result *gepb.ResultRef
 	defer timeoutCancel()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel() // also release server result pins on validation failure
-	headers := metadata.Join(c.options.outgoingMetadata(), callerMD)
+	headers := callerMD.Copy()
+	for key, values := range c.options.outgoingMetadata() {
+		headers[key] = values
+	}
 	headers.Set("x-ge-components-chunks", "1")
 	stream, err := c.engine.GetResult(metadata.NewOutgoingContext(ctx, headers), &gepb.GetResultRequest{Result: result})
 	if err != nil {
@@ -637,7 +640,6 @@ func (c *Client) GetComponentsResult(ctx context.Context, result *gepb.ResultRef
 	iter := &ResultIterator{stream: stream}
 	comp := &ComponentsResult{}
 	groups := make(map[uint32]bool)
-	nodes := make(map[uint64]uint32)
 	done, seen, structured, legacy := false, false, false, false
 	for {
 		chunk, err := iter.Next()
@@ -658,17 +660,10 @@ func (c *Client) GetComponentsResult(ctx context.Context, result *gepb.ResultRef
 			if int(data.NumComponents) > comp.NumComponents {
 				comp.NumComponents = int(data.NumComponents)
 			}
-			for i, id := range data.NodeIdsU64 {
-				group := data.Membership[i]
-				if prior, exists := nodes[id]; exists {
-					if prior != group {
-						return nil, fmt.Errorf("invalid membership result: conflicting node %d", id)
-					}
-					continue
-				}
-				nodes[id], groups[group] = group, true
-				comp.NodeIDs = append(comp.NodeIDs, id)
-				comp.Membership = append(comp.Membership, group)
+			comp.NodeIDs = append(comp.NodeIDs, data.NodeIdsU64...)
+			comp.Membership = append(comp.Membership, data.Membership...)
+			for _, group := range data.Membership {
+				groups[group] = true
 			}
 		}
 		if data := chunk.GetU32(); data != nil && data.Name == "membership" {
