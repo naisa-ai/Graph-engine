@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
 	"github.com/naisa-ai/graph-engine/internal/config"
@@ -1681,6 +1682,9 @@ func (h *GraphEngineHandler) GetResult(req *gepb.GetResultRequest, stream gepb.G
 	// Send data based on algorithm type
 	switch result.AlgoKind {
 	case service.AlgoKindComponents, service.AlgoKindCommunities:
+		if len(result.NodeIDsU64) != len(result.MembershipU32) {
+			return status.Error(codes.Internal, "invalid components result: parallel arrays differ")
+		}
 		// Send components/communities result with node IDs for proper mapping
 		numComponents := uint32(0)
 		if nc, ok := result.Meta["num_components"]; ok {
@@ -1688,17 +1692,31 @@ func (h *GraphEngineHandler) GetResult(req *gepb.GetResultRequest, stream gepb.G
 				numComponents = uint32(n)
 			}
 		}
-		chunk := &gepb.ResultChunk{
-			Payload: &gepb.ResultChunk_Components{
-				Components: &gepb.ComponentsResult{
-					NodeIdsU64:    result.NodeIDsU64,
-					Membership:    result.MembershipU32,
-					NumComponents: numComponents,
-				},
-			},
+		// Legacy collectors replace, rather than append, structured frames.
+		// Chunk only for callers that explicitly support it. Even maximum-size
+		// uint64/uint32 varints fit below 1 MiB per 65,536-row frame.
+		rowsPerChunk := max(1, len(result.NodeIDsU64))
+		md, _ := metadata.FromIncomingContext(stream.Context())
+		if values := md.Get("x-ge-components-chunks"); len(values) == 1 && values[0] == "1" {
+			rowsPerChunk = 65536
 		}
-		if err := stream.Send(chunk); err != nil {
-			return status.Errorf(codes.Internal, "failed to send components: %v", err)
+		for start := 0; start == 0 || start < len(result.NodeIDsU64); start += rowsPerChunk {
+			if err := stream.Context().Err(); err != nil {
+				return status.FromContextError(err).Err()
+			}
+			end := min(start+rowsPerChunk, len(result.NodeIDsU64))
+			chunk := &gepb.ResultChunk{
+				Payload: &gepb.ResultChunk_Components{
+					Components: &gepb.ComponentsResult{
+						NodeIdsU64:    result.NodeIDsU64[start:end],
+						Membership:    result.MembershipU32[start:end],
+						NumComponents: numComponents,
+					},
+				},
+			}
+			if err := stream.Send(chunk); err != nil {
+				return status.Errorf(codes.Internal, "failed to send components: %v", err)
+			}
 		}
 
 	case service.AlgoKindShortestPath:

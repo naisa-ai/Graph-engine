@@ -5,10 +5,12 @@ package graphengine
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"time"
 
 	gepb "github.com/naisa-ai/graph-engine/clients/go/gen/graphengine/v1"
+	"google.golang.org/grpc/metadata"
 )
 
 // =============================================================================
@@ -180,7 +182,7 @@ func (c *Client) ComponentsWithMode(ctx context.Context, graph *gepb.GraphRef, m
 		return nil, err
 	}
 
-	return c.collectComponentsResult(ctx, result)
+	return c.GetComponentsResult(ctx, result)
 }
 
 // Communities detects communities using the Louvain algorithm.
@@ -207,7 +209,7 @@ func (c *Client) CommunitiesWithParams(ctx context.Context, graph *gepb.GraphRef
 		return nil, err
 	}
 
-	return c.collectComponentsResult(ctx, result)
+	return c.GetComponentsResult(ctx, result)
 }
 
 // CommunitiesOnView detects communities on a view using the Louvain algorithm.
@@ -234,7 +236,7 @@ func (c *Client) CommunitiesOnViewWithParams(ctx context.Context, view *gepb.Vie
 		return nil, err
 	}
 
-	return c.collectComponentsResult(ctx, result)
+	return c.GetComponentsResult(ctx, result)
 }
 
 // Distances computes distances between source and target sets.
@@ -611,15 +613,32 @@ func (c *Client) collectKSPResult(ctx context.Context, result *gepb.ResultRef) (
 	return paths, nil
 }
 
-func (c *Client) collectComponentsResult(ctx context.Context, result *gepb.ResultRef) (*ComponentsResult, error) {
-	iter, err := c.GetResultStream(ctx, result)
-	if err != nil {
-		return nil, err
+// GetComponentsResult collects a completed components/community result, negotiating
+// bounded structured frames and validating the complete stream. It also supports
+// legacy single-frame servers and membership-only U32 buffers. The result reference
+// remains caller-owned; cancelling this RPC releases its stream pin, not the result.
+// Use this after RunAndWait when configuring an algorithm timeout explicitly.
+// Raw GetResultStream callers retain legacy framing unless they opt in themselves.
+func (c *Client) GetComponentsResult(ctx context.Context, result *gepb.ResultRef) (*ComponentsResult, error) {
+	if ctx == nil {
+		ctx = context.Background()
 	}
-
+	callerMD, _ := metadata.FromOutgoingContext(ctx)
+	ctx, timeoutCancel := c.context(ctx)
+	defer timeoutCancel()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel() // also release server result pins on validation failure
+	headers := metadata.Join(c.options.outgoingMetadata(), callerMD)
+	headers.Set("x-ge-components-chunks", "1")
+	stream, err := c.engine.GetResult(metadata.NewOutgoingContext(ctx, headers), &gepb.GetResultRequest{Result: result})
+	if err != nil {
+		return nil, wrapError(err, "GetResult")
+	}
+	iter := &ResultIterator{stream: stream}
 	comp := &ComponentsResult{}
-	componentSet := make(map[uint32]bool)
-
+	groups := make(map[uint32]bool)
+	nodes := make(map[uint64]uint32)
+	done, seen, structured, legacy := false, false, false, false
 	for {
 		chunk, err := iter.Next()
 		if err == io.EOF {
@@ -628,29 +647,47 @@ func (c *Client) collectComponentsResult(ctx context.Context, result *gepb.Resul
 		if err != nil {
 			return nil, err
 		}
-
-		// New ComponentsResult format with node_ids and membership
-		if components := chunk.GetComponents(); components != nil {
-			comp.NodeIDs = components.NodeIdsU64
-			comp.Membership = components.Membership
-			comp.NumComponents = int(components.NumComponents)
-			for _, c := range components.Membership {
-				componentSet[c] = true
+		if done {
+			return nil, fmt.Errorf("invalid membership result: frame after Done")
+		}
+		if data := chunk.GetComponents(); data != nil {
+			if legacy || len(data.NodeIdsU64) != len(data.Membership) {
+				return nil, fmt.Errorf("invalid membership result: mixed format or mismatched arrays")
+			}
+			seen, structured = true, true
+			if int(data.NumComponents) > comp.NumComponents {
+				comp.NumComponents = int(data.NumComponents)
+			}
+			for i, id := range data.NodeIdsU64 {
+				group := data.Membership[i]
+				if prior, exists := nodes[id]; exists {
+					if prior != group {
+						return nil, fmt.Errorf("invalid membership result: conflicting node %d", id)
+					}
+					continue
+				}
+				nodes[id], groups[group] = group, true
+				comp.NodeIDs = append(comp.NodeIDs, id)
+				comp.Membership = append(comp.Membership, group)
 			}
 		}
-
-		// Legacy U32 buffer format (fallback)
-		if u32 := chunk.GetU32(); u32 != nil && u32.Name == "membership" {
-			comp.Membership = u32.Values
-			for _, c := range u32.Values {
-				componentSet[c] = true
+		if data := chunk.GetU32(); data != nil && data.Name == "membership" {
+			if structured {
+				return nil, fmt.Errorf("invalid membership result: mixed format")
+			}
+			seen, legacy = true, true
+			comp.Membership = append(comp.Membership, data.Values...)
+			for _, group := range data.Values {
+				groups[group] = true
 			}
 		}
+		done = chunk.GetDone()
 	}
-
-	// Compute num_components from the set if not set from protobuf
-	if comp.NumComponents == 0 && len(componentSet) > 0 {
-		comp.NumComponents = len(componentSet)
+	if !seen || !done {
+		return nil, fmt.Errorf("incomplete membership result stream")
+	}
+	if comp.NumComponents == 0 {
+		comp.NumComponents = len(groups)
 	}
 	return comp, nil
 }
